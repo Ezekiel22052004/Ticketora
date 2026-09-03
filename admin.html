@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full bg-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticketora - Dashboard Administrateur</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    },
+                    colors: {
+                        navy: {
+                            800: '#1E293B',
+                            900: '#0F172A',
+                            950: '#0A0F1D',
+                        },
+                        brand: {
+                            orange: '#F97316',
+                            orangeDark: '#EA580C',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #F1F5F9; }
+        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+    </style>
+</head>
+<body class="h-full flex overflow-hidden font-sans text-slate-800 bg-slate-50">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-3"></div>
+
+    <!-- SIDEBAR NAVIGATION -->
+    <aside class="w-64 bg-navy-900 text-slate-300 flex flex-col flex-shrink-0 z-20 shadow-xl transition-all duration-300">
+        <div class="h-20 flex items-center px-6 bg-navy-950 border-b border-slate-800/60 justify-between">
+            <div class="flex items-center gap-3">
+                <!-- Ton propre logo -->
+                <img src="logo.png" alt="Mon Logo" class="w-10 h-10 object-contain rounded-xl">
+                <div class="text-2xl font-extrabold tracking-tight">
+                    <span class="text-white">Ticket</span><span class="text-brand-orange">ora</span>
+                </div>
+            </div>
+            <span class="px-2 py-0.5 text-[10px] font-bold tracking-widest bg-brand-orange/20 text-brand-orange border border-brand-orange/30 rounded uppercase">ADMIN</span>
+        </div>
+
+        <nav class="flex-1 overflow-y-auto p-4 space-y-1 text-sm font-medium">
+            <div class="px-3 py-2 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Général</div>
+            
+            <button onclick="switchTab('overview')" id="nav-overview" class="nav-btn active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white bg-brand-orange shadow-md shadow-brand-orange/20 transition">
+                <i class="fa-solid fa-chart-pie text-lg w-5"></i>
+                <span>Dashboard</span>
+            </button>
+
+            <button onclick="switchTab('events')" id="nav-events" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
+                <i class="fa-solid fa-calendar-star text-lg w-5"></i>
+                <span>Événements</span>
+                <span id="badge-events-count" class="ml-auto bg-slate-800 text-xs px-2 py-0.5 rounded-full text-slate-300">0</span>
+            </button>
+
+            <button onclick="switchTab('organizers')" id="nav-organizers" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
+                <i class="fa-solid fa-user-tie text-lg w-5"></i>
+                <span>Organisateurs</span>
+                <span id="badge-org-pending" class="ml-auto bg-amber-500/20 text-amber-400 font-semibold text-xs px-2 py-0.5 rounded-full border border-amber-500/30">0 Attente</span>
+            </button>
+
+            <div class="pt-4 px-3 py-2 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Finance & Ops</div>
+
+            <button onclick="switchTab('payments')" id="nav-payments" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
+                <i class="fa-solid fa-wallet text-lg w-5"></i>
+                <span>Paiements & Retraits</span>
+            </button>
+
+            <button onclick="switchTab('scanner')" id="nav-scanner" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
+                <i class="fa-solid fa-qrcode text-lg w-5"></i>
+                <span>Scanners & Contrôle</span>
+            </button>
+        </nav>
+
+        <div class="p-4 bg-navy-950 border-t border-slate-800/60 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-full bg-brand-orange text-white flex items-center justify-center font-bold text-xs">
+                    SA
+                </div>
+                <div class="text-xs">
+                    <p class="font-semibold text-white">Super Admin</p>
+                    <p class="text-slate-400">ticketora2026@gmail.com</p>
+                </div>
+            </div>
+            <button onclick="logoutAdmin()" class="text-slate-400 hover:text-rose-400 transition p-1.5" title="Déconnexion">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i>
+            </button>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT AREA -->
+    <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+        
+        <!-- HEADER TOP BAR -->
+        <header class="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between z-10 flex-shrink-0">
+            <div class="relative w-96">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                <input type="text" id="global-search-input" onkeyup="filterAdminData()" placeholder="Rechercher un événement, un organisateur..." class="w-full pl-10 pr-4 py-2 bg-slate-100/80 border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:bg-white transition">
+            </div>
+
+            <div class="flex items-center gap-5">
+                <button onclick="openModal('create-event-modal')" class="bg-brand-orange hover:bg-brand-orangeDark text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm shadow-brand-orange/30 flex items-center gap-2 transition">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Créer un Événement</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- MAIN DYNAMIC CONTAINER -->
+        <main class="flex-1 overflow-y-auto p-8">
+
+            <!-- TAB 1: OVERVIEW DASHBOARD -->
+            <section id="tab-overview" class="tab-content space-y-8">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-extrabold text-navy-900 tracking-tight">Tableau de bord Général</h1>
+                        <p class="text-sm text-slate-500">Vue d'ensemble des performances de <span class="font-bold text-navy-900">Ticket</span><span class="font-bold text-brand-orange">ora</span></p>
+                    </div>
+                </div>
+
+                <!-- KPI STAT CARDS -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Commissions Perçues</span>
+                            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                                <i class="fa-solid fa-wallet text-lg"></i>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <div id="stat-revenue" class="text-3xl font-black text-navy-900">0 FCFA</div>
+                        </div>
+                        <div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500"></div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Billets Vendus</span>
+                            <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                                <i class="fa-solid fa-ticket text-lg"></i>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <div id="stat-tickets" class="text-3xl font-black text-navy-900">0</div>
+                        </div>
+                        <div class="absolute bottom-0 left-0 right-0 h-1 bg-blue-500"></div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Événements Actifs</span>
+                            <div class="w-10 h-10 rounded-xl bg-brand-orange/10 text-brand-orange flex items-center justify-center font-bold">
+                                <i class="fa-solid fa-fire text-lg"></i>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <div id="stat-events" class="text-3xl font-black text-navy-900">0</div>
+                        </div>
+                        <div class="absolute bottom-0 left-0 right-0 h-1 bg-brand-orange"></div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Demandes Organisateurs</span>
+                            <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                                <i class="fa-solid fa-user-clock text-lg"></i>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <div id="stat-pending-orgs" class="text-3xl font-black text-amber-600">0</div>
+                        </div>
+                        <div class="absolute bottom-0 left-0 right-0 h-1 bg-amber-500"></div>
+                    </div>
+                </div>
+
+                <!-- CHARTS SECTION -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <h3 class="text-lg font-bold text-navy-900 mb-4">Évolution des Ventes</h3>
+                        <div class="h-72"><canvas id="revenueChart"></canvas></div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <h3 class="text-lg font-bold text-navy-900 mb-4">Répartition par Catégories</h3>
+                        <div class="h-60 flex items-center justify-center"><canvas id="categoryChart"></canvas></div>
+                    </div>
+                </div>
+
+                <!-- TABLES GRID: Recent Transactions & Pending Organizers -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-bold text-navy-900 flex items-center gap-2">
+                                <i class="fa-solid fa-shield-halved text-brand-orange"></i> Demandes Organisateurs En Attente
+                            </h3>
+                            <button onclick="switchTab('organizers')" class="text-xs text-brand-orange font-bold hover:underline">Voir tout</button>
+                        </div>
+                        <div id="dashboard-pending-orgs-list" class="divide-y divide-slate-100">
+                            <!-- Injected dynamically -->
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-bold text-navy-900">Dernières Ventes</h3>
+                            <button onclick="switchTab('payments')" class="text-xs text-brand-orange font-bold hover:underline">Voir tout</button>
+                        </div>
+                        <div id="dashboard-recent-sales-list" class="divide-y divide-slate-100">
+                            <!-- Injected dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 2: EVENTS MANAGEMENT -->
+            <section id="tab-events" class="tab-content hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-extrabold text-navy-900">Gestion des Événements</h1>
+                        <p class="text-sm text-slate-500">Validez, modérez ou supprimez les événements</p>
+                    </div>
+                    <button onclick="openModal('create-event-modal')" class="bg-brand-orange hover:bg-brand-orangeDark text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm">
+                        <i class="fa-solid fa-plus"></i> Nouvel Événement
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                    <table class="w-full text-left text-sm text-slate-600">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            <tr>
+                                <th class="p-4">Titre</th>
+                                <th class="p-4">Catégorie</th>
+                                <th class="p-4">Prix</th>
+                                <th class="p-4">Capacité</th>
+                                <th class="p-4">Statut</th>
+                                <th class="p-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-events-list" class="divide-y divide-slate-100 font-medium">
+                            <!-- Dynamic events -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- TAB 3: ORGANIZERS MANAGEMENT -->
+            <section id="tab-organizers" class="tab-content hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-extrabold text-navy-900">Comptes & Demandes Organisateurs</h1>
+                        <p class="text-sm text-slate-500">Validation manuelle des comptes organisateurs</p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                    <table class="w-full text-left text-sm text-slate-600">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            <tr>
+                                <th class="p-4">Nom / Prénom</th>
+                                <th class="p-4">Email</th>
+                                <th class="p-4">Événements</th>
+                                <th class="p-4">Tickets</th>
+                                <th class="p-4">Revenus</th>
+                                <th class="p-4">Statut</th>
+                                <th class="p-4 text-right">Décision Admin</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-org-list" class="divide-y divide-slate-100 font-medium">
+                            <!-- Dynamic organizers -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- TAB 4: PAYMENTS & TRANSACTIONS -->
+            <section id="tab-payments" class="tab-content hidden space-y-6">
+                <div>
+                    <h1 class="text-2xl font-extrabold text-navy-900">Paiements & Transactions</h1>
+                    <p class="text-sm text-slate-500">Historique des ventes de billets enregistrées dans le système</p>
+                </div>
+                <!-- RETRAITS ORGANISATEURS -->
+                <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                    <div class="p-5 border-b border-slate-100 flex items-center justify-between">
+                        <div>
+                            <h2 class="text-lg font-extrabold text-navy-900">Demandes de retrait des organisateurs</h2>
+                            <p class="text-xs text-slate-500">Validez, refusez ou marquez comme payé chaque retrait.</p>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                <tr><th class="p-4">Organisateur</th><th class="p-4">Compte</th><th class="p-4">Montant</th><th class="p-4">Statut</th><th class="p-4">Date</th><th class="p-4 text-right">Action</th></tr>
+                            </thead>
+                            <tbody id="admin-payouts-list" class="divide-y divide-slate-100 font-medium"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- RETRAIT ADMIN -->
+                <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+                        <div>
+                            <h2 class="text-lg font-extrabold text-navy-900">Mon retrait administrateur</h2>
+                            <p class="text-xs text-slate-500 mt-1">Le solde disponible correspond aux commissions Ticketora réellement enregistrées.</p>
+                            <div class="mt-3 text-2xl font-black text-brand-orange"><span id="admin-withdrawal-balance">0</span> FCFA</div>
+                        </div>
+                        <form id="admin-withdrawal-form" class="flex flex-col md:flex-row gap-3 md:items-end">
+                            <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Montant (FCFA)</label><input id="admin-withdrawal-amount" type="number" min="1" required placeholder="Ex: 50000" class="w-full md:w-40 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm"></div>
+                            <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Compte Mobile Money / IBAN</label><input id="admin-withdrawal-account" type="text" required placeholder="+228..." class="w-full md:w-64 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm"></div>
+                            <button type="submit" class="bg-brand-orange hover:bg-brand-orangeDark text-white font-bold px-5 py-3 rounded-xl">Lancer le retrait</button>
+                        </form>
+                    </div>
+                    <div class="mt-6 overflow-x-auto">
+                        <table class="w-full text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider"><tr><th class="p-4">Montant</th><th class="p-4">Compte</th><th class="p-4">Statut</th><th class="p-4">Date</th><th class="p-4 text-right">Action</th></tr></thead>
+                            <tbody id="admin-withdrawals-list" class="divide-y divide-slate-100 font-medium"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                    <table class="w-full text-left text-sm text-slate-600">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            <tr>
+                                <th class="p-4">Réf. Billet</th>
+                                <th class="p-4">Acheteur</th>
+                                <th class="p-4">Événement</th>
+                                <th class="p-4">Montant Total</th>
+                                <th class="p-4">Commission Admin</th>
+                                <th class="p-4">Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-payments-list" class="divide-y divide-slate-100 font-medium">
+                            <!-- Dynamic payments -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- TAB 5: SCANNER SIMULATOR -->
+            <section id="tab-scanner" class="tab-content hidden space-y-6">
+                <div>
+                    <h1 class="text-2xl font-extrabold text-navy-900">Simulateur de Contrôle & Scanner QR</h1>
+                    <p class="text-sm text-slate-500">Testez la validation instantanée d'un code billet (Ex: TCK-XXXXXX)</p>
+                </div>
+
+                <div class="max-w-xl mx-auto bg-white p-8 rounded-2xl border border-slate-200/80 shadow-lg text-center space-y-6">
+                    <div class="w-20 h-20 bg-brand-orange/10 text-brand-orange rounded-3xl flex items-center justify-center mx-auto text-3xl">
+                        <i class="fa-solid fa-qrcode"></i>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-bold text-navy-900">Scanner un Code Billet</h3>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <input type="text" id="scanner-input" placeholder="Ex: TCK-123456" class="flex-1 px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-center font-mono font-bold text-lg uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-brand-orange">
+                        <button onclick="simulateScan()" class="bg-navy-900 hover:bg-navy-950 text-white font-bold px-6 py-3 rounded-xl transition">
+                            Vérifier
+                        </button>
+                    </div>
+
+                    <div id="scan-result" class="hidden p-6 rounded-2xl transition duration-300">
+                        <div id="scan-icon" class="text-4xl mb-2"></div>
+                        <h4 id="scan-title" class="text-xl font-black uppercase tracking-wider"></h4>
+                        <p id="scan-details" class="text-sm mt-1"></p>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- MODAL: CREATE EVENT -->
+    <div id="create-event-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-white w-full max-w-2xl rounded-2xl p-6 shadow-2xl space-y-6">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-extrabold text-navy-900 text-lg">Créer un Nouvel Événement (Admin)</h3>
+                <button onclick="closeModal('create-event-modal')" class="text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            
+            <form onsubmit="handleCreateEvent(event)" class="space-y-4 text-sm">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">Titre de l'événement</label>
+                    <input type="text" id="form-event-title" required placeholder="Ex: Concert Afrobeats 2026" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Catégorie</label>
+                        <select id="form-event-category" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:outline-none">
+                            <option value="Concert">Concert</option>
+                            <option value="Festival">Festival</option>
+                            <option value="Sport">Sport</option>
+                            <option value="Théâtre">Théâtre</option>
+                            <option value="Formation">Formation</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Prix du Billet (FCFA)</label>
+                        <input type="number" id="form-event-price" required placeholder="5000" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">Affiche de l'événement</label>
+                    <input type="file" id="form-event-image" accept="image/png,image/jpeg,image/webp,image/gif" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm">
+                    <p class="text-[11px] text-slate-400 mt-1">PNG/JPG/WebP/GIF — maximum 1,5 Mo.</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Date</label>
+                        <input type="date" id="form-event-date" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Capacité Max</label>
+                        <input type="number" id="form-event-capacity" required placeholder="500" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:outline-none">
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                    <button type="button" onclick="closeModal('create-event-modal')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs">Annuler</button>
+                    <button type="submit" class="px-5 py-2 bg-brand-orange hover:bg-brand-orangeDark text-white font-bold rounded-lg text-xs shadow-md shadow-brand-orange/20">Publier l'événement</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Script de logique JS -->
+    <script src="config.js"></script>
+    <script src="admin.js"></script>
+</body>
+</html>

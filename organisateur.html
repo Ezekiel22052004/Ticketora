@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticketora - Espace Organisateur</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex">
+
+    <!-- LOGIN / DEMANDE D'ACCÈS ORGANISATEUR -->
+    <div id="org-auth-screen" class="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-slate-800 rounded-2xl border border-slate-700 p-8 space-y-6">
+            <div class="text-center space-y-2">
+                <div class="inline-flex items-center gap-2 text-3xl font-black text-white">
+                    <img src="logo.png" alt="Logo" class="w-9 h-9 object-contain rounded-xl">
+                    <span>Ticket<span class="text-[#F97316]">ora</span></span>
+                </div>
+                <p class="text-xs text-slate-400">Espace Organisateur</p>
+            </div>
+
+            <!-- Bascule Onglets -->
+            <div class="flex border-b border-slate-700 pb-2">
+                <button id="tab-org-login" onclick="toggleOrgAuth('login')" class="w-1/2 text-center pb-2 font-bold text-sm text-[#F97316] border-b-2 border-[#F97316]">Se Connecter</button>
+                <button id="tab-org-register" onclick="toggleOrgAuth('register')" class="w-1/2 text-center pb-2 font-bold text-sm text-slate-400 hover:text-white">Demander un Accès</button>
+            </div>
+
+            <!-- Formulaire 1 : Connexion -->
+            <div id="form-org-login-box">
+                <form id="form-org-login" onsubmit="handleOrgLogin(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 uppercase mb-2">Email</label>
+                        <input type="email" id="login-org-email" required placeholder="organisateur@gmail.com" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#F97316]">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 uppercase mb-2">Mot de passe</label>
+                        <input type="password" id="login-org-password" required placeholder="••••••••" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#F97316]">
+                    </div>
+                    <div id="org-login-message" class="hidden text-xs p-3 rounded-xl text-center font-semibold"></div>
+                    <button type="submit" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3.5 rounded-xl transition">Se connecter</button>
+                </form>
+            </div>
+
+            <!-- Formulaire 2 : Demande d'accès (Inscription) -->
+            <div id="form-org-register-box" class="hidden space-y-4">
+                <p class="text-xs text-slate-400 text-center">Soumettez votre demande pour recevoir un accès administrateur.</p>
+                <form id="form-org-register" onsubmit="handleOrgRegister(event)" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Nom / Organisation</label>
+                        <input type="text" id="reg-org-name" required placeholder="Ex: Event Pro Agency" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#F97316]">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Email</label>
+                        <input type="email" id="reg-org-email" required placeholder="contact@eventpro.com" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#F97316]">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Téléphone</label>
+                        <input type="tel" id="reg-org-phone" required placeholder="+228 90 00 00 00" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#F97316]">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Mot de passe souhaité</label>
+                        <input type="password" id="reg-org-password" required placeholder="••••••••" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#F97316]">
+                    </div>
+                    <div id="org-register-message" class="hidden text-xs p-3 rounded-xl text-center font-semibold"></div>
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl transition">Envoyer la demande</button>
+                </form>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- DASHBOARD ORGANISATEUR -->
+    <div id="org-dashboard-screen" class="hidden w-full min-h-screen flex bg-slate-50 text-slate-800">
+        <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between p-6 h-screen sticky top-0">
+            <div class="space-y-8">
+                <div class="flex items-center gap-3 text-white text-2xl font-black">
+                    <img src="logo.png" alt="Logo" class="w-9 h-9 object-contain rounded-xl">
+                    <span>Ticket<span class="text-[#F97316]">ora</span></span>
+                </div>
+                <nav class="space-y-2">
+                    <button onclick="switchOrgSection('stats')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800 text-white"><i class="fa-solid fa-chart-line w-5"></i> Ventes</button>
+                    <button onclick="switchOrgSection('events')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-calendar-days w-5"></i> Événements</button>
+                    <button onclick="switchOrgSection('payouts')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-wallet w-5"></i> Demandes de Retrait</button>
+                    <button onclick="switchOrgSection('scanner')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-qrcode w-5"></i> Scanner Billets</button>
+                    <button onclick="switchOrgSection('settings')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-gear w-5"></i> Paramètres</button>
+                </nav>
+            </div>
+            <div class="flex items-center justify-between pt-6 border-t border-slate-800">
+                <div>
+                    <p class="text-sm font-bold text-white" id="active-org-name">Organisateur</p>
+                    <span class="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold">Compte Validé</span>
+                </div>
+                <button onclick="logoutOrg()" class="text-slate-400 hover:text-red-400"><i class="fa-solid fa-power-off text-lg"></i></button>
+            </div>
+        </aside>
+
+        <main class="flex-1 p-8 space-y-8 overflow-y-auto">
+            <!-- VENTES -->
+            <section id="org-sec-stats" class="space-y-6">
+                <h1 class="text-2xl font-black text-slate-900">Aperçu des Ventes</h1>
+                <div class="grid grid-cols-3 gap-6">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Solde Net Dispo</p><p id="org-stat-revenue" class="text-2xl font-black text-slate-900 mt-2">0 FCFA</p></div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Billets Vendus</p><p id="org-stat-tickets" class="text-2xl font-black text-slate-900 mt-2">0</p></div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Événements Actifs</p><p id="org-stat-events" class="text-2xl font-black text-slate-900 mt-2">0</p></div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Billets Utilisés</p><p id="org-stat-used" class="text-2xl font-black text-slate-900 mt-2">0</p></div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Retraits en attente</p><p id="org-stat-pending-payout" class="text-2xl font-black text-slate-900 mt-2">0 FCFA</p></div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><div class="flex items-center justify-between"><div><p class="text-xs font-bold text-slate-400 uppercase">Ventes par événement</p><p class="text-xs text-slate-500 mt-1">Tickets vendus</p></div><i class="fa-solid fa-chart-column text-[#F97316] text-xl"></i></div><div class="mt-4 h-64"><canvas id="org-sales-chart"></canvas></div></div>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Performance</p><div class="mt-4 h-2 bg-slate-100 rounded-full overflow-hidden"><div id="org-performance-bar" class="h-full bg-[#F97316] rounded-full" style="width:0%"></div></div><p class="text-xs text-slate-500 mt-2">Suivez vos ventes et vos entrées depuis ce tableau de bord.</p></div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Conseil</p><p class="text-sm text-slate-600 mt-3">Ajoutez une belle affiche et des catégories de billets claires pour améliorer la présentation de vos événements.</p></div>
+                </div>
+            </section>
+
+            <!-- ÉVÉNEMENTS & CATÉGORIES MULTIPLES -->
+            <section id="org-sec-events" class="hidden space-y-6">
+                <div class="flex justify-between items-center">
+                    <h1 class="text-2xl font-black text-slate-900">Mes Événements</h1>
+                    <button onclick="toggleEventForm()" class="bg-[#F97316] text-white font-bold px-4 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-plus"></i> Créer</button>
+                </div>
+                
+                <!-- Formulaire de création / modification enrichi (Catégories & Modèles PDF) -->
+                <div id="org-event-form-box" class="hidden bg-white p-6 rounded-2xl border border-slate-200 space-y-6 shadow-md">
+                    <form id="org-event-form" onsubmit="saveEvent(event)" class="space-y-6">
+                        <input type="hidden" id="event-id">
+                        
+                        <!-- Informations générales -->
+                        <div class="space-y-4">
+                            <h3 class="text-sm font-bold uppercase text-slate-400 tracking-wider">1. Informations Générales</h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <input type="text" id="event-title" required placeholder="Titre de l'événement" class="bg-slate-50 border rounded-xl p-3 text-sm">
+                                <select id="event-category" class="bg-slate-50 border rounded-xl p-3 text-sm">
+                                    <option value="Concert">Concert</option>
+                                    <option value="Festival">Festival</option>
+                                    <option value="Formation">Formation</option>
+                                    <option value="VIP">VIP</option>
+                                </select>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <input type="date" id="event-date" required class="bg-slate-50 border rounded-xl p-3 text-sm">
+                                <input type="text" id="event-location" required placeholder="Lieu" class="bg-slate-50 border rounded-xl p-3 text-sm">
+                            </div>
+                            <textarea id="event-desc" placeholder="Description de l'événement..." rows="3" class="w-full bg-slate-50 border rounded-xl p-3 text-sm"></textarea>
+                            <div><label class="block text-xs font-bold text-slate-700 uppercase mb-1">Affiche de l’événement</label><input type="file" id="event-image" accept="image/png,image/jpeg,image/webp,image/gif" class="w-full bg-slate-50 border rounded-xl p-3 text-sm"><p class="text-[11px] text-slate-400 mt-1">Maximum 1,5 Mo.</p></div>
+                        </div>
+
+                        <!-- Gestion des Catégories de Billets & Stocks (Étape 2) -->
+                        <div class="space-y-4 border-t border-slate-100 pt-4">
+                            <div class="flex justify-between items-center">
+                                <h3 class="text-sm font-bold uppercase text-slate-400 tracking-wider">2. Catégories de Billets & Stocks</h3>
+                                <button type="button" onclick="addTicketCategoryRow()" class="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg font-bold"><i class="fa-solid fa-plus"></i> Ajouter une catégorie</button>
+                            </div>
+                            
+                            <div id="ticket-categories-container" class="space-y-3">
+                                <!-- Les lignes de catégories injectées dynamiquement s'afficheront ici -->
+                            </div>
+                        </div>
+
+                        <!-- Boutons d'action -->
+                        <div class="flex justify-end gap-3 border-t border-slate-100 pt-4">
+                            <button type="button" onclick="toggleEventForm()" class="px-4 py-2 text-xs font-bold text-slate-500">Annuler</button>
+                            <button type="submit" class="bg-[#F97316] text-white px-6 py-2.5 rounded-xl font-bold text-sm">Enregistrer l'événement</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Liste des événements -->
+                <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-50 text-slate-400 text-xs font-bold border-b">
+                            <tr><th class="p-4">Titre</th><th class="p-4">Date</th><th class="p-4">Catégories & Stocks</th><th class="p-4">Statut</th><th class="p-4">Vendus</th><th class="p-4 text-right">Actions</th></tr>
+                        </thead>
+                        <tbody id="org-my-events-list"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- DEMANDES DE RETRAIT (PAYOUTS) -->
+            <section id="org-sec-payouts" class="hidden space-y-6">
+                <h1 class="text-2xl font-black text-slate-900">Demander un Retrait</h1>
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 space-y-4 max-w-md">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Montant à retirer (FCFA)</label>
+                        <input type="number" id="payout-amount" placeholder="Ex: 50000" class="w-full bg-slate-50 border rounded-xl p-3 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Numéro Mobile Money / IBAN</label>
+                        <input type="text" id="payout-account" placeholder="+228 90 00 00 00 (TMoney/Flooz)" class="w-full bg-slate-50 border rounded-xl p-3 text-sm">
+                    </div>
+                    <button onclick="requestPayout()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition">Soumettre la demande</button>
+                </div>
+                <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                    <div class="p-5 border-b"><h2 class="font-black text-slate-900">Historique de mes retraits</h2><p class="text-xs text-slate-500 mt-1">Téléchargez le justificatif des retraits validés ou payés.</p></div>
+                    <div class="overflow-x-auto"><table class="w-full text-left"><thead class="bg-slate-50 text-xs font-bold text-slate-400"><tr><th class="p-3">Montant</th><th class="p-3">Compte</th><th class="p-3">Statut</th><th class="p-3">Date</th><th class="p-3 text-right">Document</th></tr></thead><tbody id="org-payouts-list"></tbody></table></div>
+                </div>
+            </section>
+
+            <!-- SCANNER -->
+            <section id="org-sec-scanner" class="hidden space-y-6 max-w-md mx-auto">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 space-y-4 text-center">
+                    <h2 class="text-xl font-bold text-slate-900"><i class="fa-solid fa-qrcode text-[#F97316]"></i> Valider un billet</h2>
+                    <input type="text" id="org-scan-input" placeholder="Ex: TKT-8X92KP4Q" class="w-full bg-slate-50 border rounded-xl p-3 text-center uppercase font-mono font-bold text-slate-800">
+                    <button onclick="scanTicketOrg()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition">Valider</button>
+                    <div id="org-scan-result" class="mt-4"></div>
+                </div>
+            </section>
+
+            <!-- PARAMÈTRES -->
+            <section id="org-sec-settings" class="hidden space-y-6 max-w-2xl">
+                <h1 class="text-2xl font-black text-slate-900">Paramètres</h1>
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 space-y-4">
+                    <h3 class="font-bold text-slate-900">Modifier le mot de passe</h3>
+                    <form onsubmit="updateOrgPassword(event)" class="space-y-4">
+                        <input type="password" id="pwd-old" placeholder="Ancien mot de passe" required class="w-full bg-slate-50 border rounded-xl p-3 text-sm">
+                        <input type="password" id="pwd-new" placeholder="Nouveau mot de passe" required class="w-full bg-slate-50 border rounded-xl p-3 text-sm">
+                        <div id="pwd-msg" class="hidden text-xs p-3 rounded-xl font-semibold"></div>
+                        <button type="submit" class="bg-slate-900 text-white font-bold px-6 py-2.5 rounded-xl text-sm">Mettre à jour</button>
+                    </form>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Logique de gestion -->
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

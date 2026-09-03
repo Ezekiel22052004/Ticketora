@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticketora - Billetterie & Événements</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- QR Code & PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen relative">
+
+    <!-- BARRE DE NAVIGATION (SITE PUBLIC) -->
+    <nav class="bg-slate-800/80 backdrop-blur-md border-b border-slate-700 sticky top-0 z-50 px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-3 text-2xl font-black text-white cursor-pointer" onclick="showSection('client-home')">
+            <img src="logo.png" alt="Logo" class="w-9 h-9 object-contain rounded-xl">
+            <span>Ticket<span class="text-[#F97316]">ora</span></span>
+        </div>
+        <div class="flex items-center gap-4">
+            <button onclick="showSection('client-events')" class="text-sm font-semibold hover:text-[#F97316] transition">Événements</button>
+            <button onclick="showSection('client-verify')" class="text-sm font-semibold hover:text-[#F97316] transition"><i class="fa-solid fa-qrcode"></i> Vérifier un Billet</button>
+            <!-- Bouton Organisateur à la place d'Admin -->
+            <a href="organisateur.html" class="bg-[#F97316] hover:bg-orange-600 text-xs px-4 py-2 rounded-xl transition text-white font-bold flex items-center gap-2">
+                <i class="fa-solid fa-user-tie"></i> Espace Organisateur
+            </a>
+        </div>
+    </nav>
+
+    <!-- ACCUEIL -->
+    <section id="client-home" class="p-8 max-w-7xl mx-auto space-y-12">
+        <div class="text-center space-y-4 py-12 bg-gradient-to-r from-orange-600/20 to-amber-600/20 rounded-3xl border border-orange-500/20">
+            <h1 class="text-4xl md:text-6xl font-black text-white">Vos événements préférés, en un clic.</h1>
+            <p class="text-slate-400 text-sm md:text-base max-w-2xl mx-auto">Achetez vos billets en toute sécurité via Mobile Money & Carte Bancaire.</p>
+            <button onclick="showSection('client-events')" class="bg-[#F97316] hover:bg-orange-600 text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg transition">Découvrir les événements</button>
+        </div>
+    </section>
+
+    <!-- ÉVÉNEMENTS & FILTRES -->
+    <section id="client-events" class="p-8 max-w-7xl mx-auto space-y-6">
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+            <h2 class="text-2xl font-black text-white">Tous les événements</h2>
+            <div class="flex gap-3 w-full md:w-auto">
+                <input type="text" id="search-event" oninput="filterEvents()" placeholder="Rechercher..." class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#F97316]">
+                <select id="filter-category" onchange="filterEvents()" class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white">
+                    <option value="ALL">Toutes catégories</option>
+                    <option value="Concert">Concert</option>
+                    <option value="Festival">Festival</option>
+                    <option value="Formation">Formation</option>
+                </select>
+            </div>
+        </div>
+        <div id="client-events-grid" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
+    </section>
+
+    <!-- VÉRIFICATEUR PUBLIC -->
+    <section id="client-verify" class="hidden p-8 max-w-md mx-auto space-y-6">
+        <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 text-center space-y-4">
+            <h2 class="text-xl font-bold text-white"><i class="fa-solid fa-qrcode text-[#F97316]"></i> Vérifier un Billet</h2>
+            <p class="text-xs text-slate-400">Entrez le code unique pour vérifier la validité du billet.</p>
+            <input type="text" id="public-scan-input" placeholder="Ex: TCK-98213" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-center uppercase font-mono font-bold text-white">
+            <button onclick="verifyTicketPublic()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition">Vérifier</button>
+            <div id="public-scan-result" class="mt-4"></div>
+        </div>
+    </section>
+
+    <!-- MODAL ACHAT (TCHIN + PROMO) -->
+    <div id="modal-buy-ticket" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-800 w-full max-w-lg rounded-2xl border border-slate-700 p-6 space-y-6 relative max-h-[90vh] overflow-y-auto">
+            <button onclick="closeBuyModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+            
+            <div id="buy-step-1" class="space-y-4">
+                <h3 class="text-xl font-bold text-white" id="modal-event-title">Achat de Billet</h3>
+                <p class="text-xs text-slate-400" id="modal-event-price"></p>
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Nom complet</label>
+                    <input type="text" id="buy-name" required placeholder="Ex: Marc Koffi" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Email</label>
+                    <input type="email" id="buy-email" required placeholder="nom@exemple.com" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Type de billet</label>
+                    <select id="buy-ticket-type" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Code Promo (Optionnel)</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="buy-promo" placeholder="Ex: PROMO10" class="uppercase w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white">
+                        <button onclick="applyPromoCode()" class="bg-slate-700 text-xs px-3 py-2 rounded-xl font-bold hover:bg-slate-600">Appliquer</button>
+                    </div>
+                </div>
+                <button onclick="processPayment()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-credit-card"></i> Payer avec Tchin
+                </button>
+            </div>
+
+            <!-- TICKET PDF GÉNÉRÉ À PARTIR DU MODÈLE TICKETORA -->
+            <div id="buy-step-2" class="hidden space-y-4 text-center">
+                <div id="ticket-pdf-area" class="relative overflow-hidden mx-auto bg-white" style="width:1200px;height:560px;max-width:100%;aspect-ratio:1200/560;">
+                    <img src="ticket-template.jpeg" alt="Modèle Ticketora" class="absolute inset-0 w-full h-full object-cover">
+                    <div class="absolute left-[17%] top-[29%] w-[50%] text-left">
+                        <div id="ticket-event-display" class="font-black text-[26px] text-[#0F172A] leading-tight"></div>
+                    </div>
+                    <div class="absolute left-[17%] top-[43%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]">
+                        <span id="ticket-date-display"></span>
+                    </div>
+                    <div class="absolute left-[17%] top-[54%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]">
+                        <span id="ticket-location-display"></span>
+                    </div>
+                    <div class="absolute left-[17%] top-[65%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]">
+                        <span id="ticket-type-display"></span>
+                    </div>
+                    <div class="absolute left-[17%] top-[76%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]">
+                        <span id="ticket-holder-display"></span>
+                    </div>
+                    <div class="absolute right-[5.5%] top-[28%] w-[16%] flex flex-col items-center gap-2">
+                        <div id="qrcode" class="bg-white p-2 rounded-lg"></div>
+                        <div id="ticket-code-display" class="font-mono text-[13px] font-black text-[#0F172A] bg-white/90 px-2 py-1 rounded"></div>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-400">Paiement confirmé. Votre billet est unique et son QR Code sera contrôlé à l’entrée.</p>
+                <button onclick="downloadPDF()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-download"></i> Télécharger mon billet (PDF)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOUTON SUPPORT WHATSAPP DIRECT (+228 72753685) -->
+    <a href="https://wa.me/22872753685" target="_blank" class="fixed bottom-6 right-6 bg-emerald-500 hover:bg-emerald-600 text-white p-4 rounded-full shadow-2xl z-40 flex items-center gap-2 font-bold text-sm transition transform hover:scale-105" title="Support WhatsApp Direct">
+        <i class="fa-brands fa-whatsapp text-2xl"></i>
+        <span class="hidden md:inline">Assistance (+228 72753685)</span>
+    </a>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
