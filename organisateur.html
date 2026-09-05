@@ -83,8 +83,10 @@
                 <nav class="space-y-2">
                     <button onclick="switchOrgSection('stats')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800 text-white"><i class="fa-solid fa-chart-line w-5"></i> Ventes</button>
                     <button onclick="switchOrgSection('events')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-calendar-days w-5"></i> Événements</button>
+                    <button onclick="switchOrgSection('promos')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-ticket-simple w-5"></i> Codes Promo</button>
                     <button onclick="switchOrgSection('payouts')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-wallet w-5"></i> Demandes de Retrait</button>
-                    <button onclick="switchOrgSection('scanner')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-qrcode w-5"></i> Scanner Billets</button>
+                    <button onclick="switchOrgSection('chat')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-regular fa-comments w-5"></i> Chat avec Admin</button>
+                    <button onclick="switchOrgSection('agents')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-user-check w-5"></i> Agents / Scanners</button>
                     <button onclick="switchOrgSection('settings')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-gear w-5"></i> Paramètres</button>
                 </nav>
             </div>
@@ -178,6 +180,29 @@
                 </div>
             </section>
 
+
+
+            <!-- CODES PROMO -->
+            <section id="org-sec-promos" class="hidden space-y-6 max-w-6xl">
+                <div><h1 class="text-2xl font-black text-slate-900">Codes Promo</h1><p class="text-sm text-slate-500">Créez des réductions sécurisées pour vos événements. Le serveur vérifie toujours le code avant le paiement.</p></div>
+                <div class="grid lg:grid-cols-[.9fr_1.1fr] gap-6">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 space-y-4">
+                        <div class="flex items-center gap-3"><div class="w-11 h-11 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-tags"></i></div><div><h2 class="font-black text-slate-900">Créer une promotion</h2><p class="text-xs text-slate-500">Pourcentage ou montant fixe.</p></div></div>
+                        <form onsubmit="createOrgPromo(event)" class="space-y-3">
+                            <input id="promo-code" required maxlength="60" pattern="[A-Za-z0-9_-]{3,60}" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 font-mono uppercase" placeholder="Ex: JEUNES10">
+                            <div class="grid grid-cols-2 gap-3"><select id="promo-discount-type" class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900"><option value="PERCENT">Pourcentage (%)</option><option value="FIXED">Montant fixe (FCFA)</option></select><input id="promo-discount-value" type="number" min="1" required class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900" placeholder="10"></div>
+                            <select id="promo-event" onchange="renderPromoTicketTypes()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900"><option value="">Tous mes événements</option></select>
+                            <div><p class="text-[10px] font-black uppercase text-slate-400 mb-2">Catégories ciblées (facultatif)</p><div id="promo-ticket-types" class="flex flex-wrap gap-2"></div><p class="text-[10px] text-slate-400 mt-2">Si aucune catégorie n’est cochée, le code fonctionne sur toutes les catégories de l’événement.</p></div>
+                            <div class="grid grid-cols-2 gap-3"><div><label class="text-[10px] font-bold text-slate-500">Début</label><input id="promo-start" type="datetime-local" class="w-full bg-slate-50 border rounded-xl p-3 text-sm text-slate-900"></div><div><label class="text-[10px] font-bold text-slate-500">Fin</label><input id="promo-end" type="datetime-local" class="w-full bg-slate-50 border rounded-xl p-3 text-sm text-slate-900"></div></div>
+                            <div class="grid grid-cols-2 gap-3"><input id="promo-max-uses" type="number" min="1" class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900" placeholder="Utilisations max (vide = illimité)"><input id="promo-max-per-customer" type="number" min="1" value="1" required class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900" placeholder="Par client"></div>
+                            <input id="promo-min-amount" type="number" min="0" value="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900" placeholder="Montant minimum en FCFA">
+                            <button class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl"><i class="fa-solid fa-plus mr-2"></i>Créer le code promo</button>
+                        </form>
+                    </div>
+                    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden"><div class="p-5 border-b border-slate-200"><h2 class="font-black text-slate-900">Mes codes</h2><p class="text-xs text-slate-500 mt-1">Suivez les utilisations et les réductions accordées.</p></div><div id="org-promos-list" class="divide-y divide-slate-100"></div></div>
+                </div>
+            </section>
+
             <!-- DEMANDES DE RETRAIT (PAYOUTS) -->
             <section id="org-sec-payouts" class="hidden space-y-6">
                 <h1 class="text-2xl font-black text-slate-900">Demander un Retrait</h1>
@@ -198,13 +223,41 @@
                 </div>
             </section>
 
-            <!-- SCANNER -->
-            <section id="org-sec-scanner" class="hidden space-y-6 max-w-md mx-auto">
-                <div class="bg-white p-6 rounded-2xl border border-slate-200 space-y-4 text-center">
-                    <h2 class="text-xl font-bold text-slate-900"><i class="fa-solid fa-qrcode text-[#F97316]"></i> Valider un billet</h2>
-                    <input type="text" id="org-scan-input" placeholder="Ex: TKT-8X92KP4Q" class="w-full bg-slate-50 border rounded-xl p-3 text-center uppercase font-mono font-bold text-slate-800">
-                    <button onclick="scanTicketOrg()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition">Valider</button>
-                    <div id="org-scan-result" class="mt-4"></div>
+
+            <section id="org-sec-chat" class="hidden space-y-6">
+              <div><h1 class="text-2xl font-black text-slate-900">Chat avec Ticketora</h1><p class="text-sm text-slate-500">Échangez directement avec l'administrateur.</p></div>
+              <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col min-h-[560px] max-w-3xl">
+                <div class="p-4 border-b border-slate-200 font-black text-slate-900"><i class="fa-regular fa-comments text-[#F97316] mr-2"></i>Support administratif</div>
+                <div id="org-chat-messages" class="flex-1 p-5 space-y-3 overflow-y-auto min-h-[420px] bg-slate-50"></div>
+                <form onsubmit="sendOrgChat(event)" class="p-4 border-t border-slate-200 flex gap-2 bg-white"><input id="org-chat-input" class="flex-1 bg-white text-slate-900 border border-slate-300 rounded-xl px-4 py-3 outline-none" placeholder="Écrire un message..." autocomplete="off"><button class="bg-[#F97316] text-white font-bold px-5 rounded-xl">Envoyer</button></form>
+              </div>
+            </section>
+
+            <!-- AGENTS / SCANNERS -->
+            <section id="org-sec-agents" class="hidden space-y-6 max-w-4xl">
+                <div>
+                    <h1 class="text-2xl font-black text-slate-900">Agents / Scanners</h1>
+                    <p class="text-sm text-slate-500">Créez les accès des personnes qui contrôleront les billets à l’entrée.</p>
+                </div>
+                <div class="grid lg:grid-cols-[.85fr_1.15fr] gap-5">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 space-y-4">
+                        <div class="flex items-center gap-3"><div class="w-11 h-11 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-user-plus"></i></div><div><h2 class="font-black text-slate-900">Créer un scanner</h2><p class="text-xs text-slate-500">Le numéro et le mot de passe seront utilisés sur l’interface Scanner.</p></div></div>
+                        <form onsubmit="createScannerAgent(event)" class="space-y-3">
+                            <input id="scanner-agent-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900" placeholder="Nom de l’agent (facultatif)">
+                            <input id="scanner-agent-number" required class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 font-mono uppercase" placeholder="Numéro scanner ex: SCN001">
+                            <input id="scanner-agent-password" required minlength="6" type="password" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900" placeholder="Mot de passe (6 caractères min.)">
+                            <button class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Créer l’accès</button>
+                        </form>
+                        <div class="rounded-xl bg-blue-50 border border-blue-100 p-3 text-xs text-blue-800"><b>Important :</b> chaque agent utilise son propre numéro et mot de passe. Il ne voit que les billets de vos événements.</div>
+                    </div>
+                    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                        <div class="p-5 border-b border-slate-200"><h2 class="font-black text-slate-900">Mes agents</h2><p class="text-xs text-slate-500 mt-1">Désactivez ou supprimez un accès à tout moment.</p></div>
+                        <div id="org-scanners-list" class="divide-y divide-slate-100"></div>
+                    </div>
+                </div>
+                <div class="bg-slate-900 text-white rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div><p class="font-black">Interface de validation</p><p class="text-xs text-slate-400 mt-1">Les agents se connectent séparément pour valider les QR codes.</p></div>
+                    <a href="scanner.html" target="_blank" class="inline-flex items-center justify-center gap-2 bg-[#F97316] px-5 py-3 rounded-xl font-bold text-sm"><i class="fa-solid fa-arrow-up-right-from-square"></i> Ouvrir Scanner</a>
                 </div>
             </section>
 

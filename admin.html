@@ -43,197 +43,93 @@
         ::-webkit-scrollbar-track { background: #F1F5F9; }
         ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+    input:not([type=checkbox]):not([type=radio]),select,textarea{color:#0f172a!important;background-color:#f8fafc!important;caret-color:#0f172a!important}input:not([type=checkbox]):not([type=radio])::placeholder,textarea::placeholder{color:#64748b!important;opacity:1!important}
+</style>
+
+    <style>
+      :root{--navy:#07152f;--navy2:#091a38;--panel:#122342;--line:#223556;--muted:#7690b4;--orange:#ff8a00}
+      body{background:var(--navy)!important;color:#fff!important}
+      .ticketora-sidebar{background:#07162f;border-right:1px solid #1e3352;height:100vh;display:flex;flex-direction:column;color:#fff}
+      .ticketora-brand{height:94px;padding:22px 26px;display:flex;align-items:center;border-bottom:1px solid #1c304e}
+      .ticketora-section-title{font-size:10px;letter-spacing:1.1px;color:#6982a4;margin:10px 10px 8px;font-weight:800}
+      .ticketora-nav{height:40px;width:100%;display:flex;align-items:center;gap:13px;padding:0 13px;border-radius:9px;color:#e3eaf4;text-align:left;margin:3px 0;background:transparent;transition:.15s}
+      .ticketora-nav:hover{background:#102341;color:#fff}.ticketora-nav.active,.nav-btn.active{background:var(--orange);color:#fff;box-shadow:0 6px 15px rgba(255,138,0,.15)}
+      .ticketora-nav i{width:13px;text-align:center}.ticketora-logout{margin:0 16px 16px;height:47px;border:1px solid #29405f;border-radius:9px;color:#ff695f;display:flex;align-items:center;gap:9px;padding:0 14px;font-weight:800;background:#0b1c38}
+      .ticketora-topbar{background:#07152f;border-bottom:1px solid #1d3352}.ticketora-search{background:#0e203e;border:1px solid #2b4364;color:#fff}.ticketora-search::placeholder{color:#7389a9}.ticketora-date{border:1px solid #2b4364;background:#0d203e;border-radius:9px;padding:10px 14px;color:#dce6f4;font-size:10px;font-weight:700}
+      .ticketora-kpi,.ticketora-panel{background:var(--panel);border:1px solid #243b5d;border-radius:13px;box-shadow:none}.ticketora-kpi{height:99px;padding:20px 16px;display:flex;align-items:center;gap:12px}.ticketora-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;color:#fff}.ticketora-icon.orange{background:#ff8500}.ticketora-icon.purple{background:#7837ed}.ticketora-icon.green{background:#0ba24c}.ticketora-icon.blue{background:#2868ea}.ticketora-icon.yellow{background:#f5a100}.ticketora-kpi-value{font-size:22px;font-weight:900;line-height:1.1;color:#fff}.ticketora-kpi-label{font-size:10px;color:#9ab0ce;margin-top:5px;font-weight:600}.ticketora-panel{padding:16px;overflow:hidden}.ticketora-panel h3{font-size:14px;font-weight:900;color:#fff;margin:0}.ticketora-panel p{font-size:9px;color:#7390b5;margin-top:4px}.ticketora-select{background:#0e203e;border:1px solid #2c4363;color:#dce6f3;border-radius:8px;font-size:9px;padding:7px 10px}.ticketora-outline-btn{border:1px solid var(--orange);color:#ff9a24;background:transparent;border-radius:7px;padding:7px 12px;font-size:9px;font-weight:800}.ticketora-status-row{height:37px;padding:0 14px;border-top:1px solid #223556;display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:700;color:#d9e3f0}.ticketora-status-row b{color:#ff9800}.green-text{color:#00c968!important}.red-text{color:#ff3d3d!important}.blue-text{color:#3980ff!important}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#d7e6f9;margin-right:5px}.tab-content{color:#fff}.tab-content.hidden{display:none!important}
+      main{background:#07152f!important}.ticketora-sidebar input,.ticketora-sidebar select,.ticketora-sidebar textarea,input,select,textarea{caret-color:#0f172a}.ticketora-panel input,.ticketora-panel select,.ticketora-panel textarea,.modal-input{color:#0f172a!important;background:#f8fafc!important}.ticketora-panel input::placeholder,.ticketora-panel textarea::placeholder{color:#64748b!important}.text-slate-800{color:#fff!important}.bg-white{background:#122342!important;border-color:#243b5d!important}.text-navy-900{color:#fff!important}.text-slate-500,.text-slate-400{color:#7892b5!important}.border-slate-200,.border-slate-100{border-color:#243b5d!important}
+      @media(max-width:1100px){.grid-cols-5{grid-template-columns:repeat(3,minmax(0,1fr))}.grid-cols-\[1\.65fr_\.72fr_\.8fr\]{grid-template-columns:1fr}.grid-cols-\[2\.05fr_\.78fr\]{grid-template-columns:1fr}}
+    </style>
+    <style>
+      :root{--navy:#07152f;--panel:#122342;--orange:#ff8a00}
+      body{background:var(--navy)!important;color:#fff!important}
+      .ticketora-sidebar{background:#07162f;border-right:1px solid #1e3352;height:100vh;display:flex;flex-direction:column;color:#fff}
+      .ticketora-brand{height:94px;padding:22px 26px;display:flex;align-items:center;border-bottom:1px solid #1c304e}
+      .ticketora-section-title{font-size:10px;letter-spacing:1.1px;color:#6982a4;margin:10px 10px 8px;font-weight:800}
+      .ticketora-nav{height:40px;width:100%;display:flex;align-items:center;gap:13px;padding:0 13px;border-radius:9px;color:#e3eaf4;text-align:left;margin:3px 0;background:transparent;transition:.15s}
+      .ticketora-nav:hover{background:#102341;color:#fff}.ticketora-nav.active,.nav-btn.active{background:var(--orange);color:#fff;box-shadow:0 6px 15px rgba(255,138,0,.15)}.ticketora-nav i{width:13px;text-align:center}
+      .ticketora-logout{margin:0 16px 16px;height:47px;border:1px solid #29405f;border-radius:9px;color:#ff695f;display:flex;align-items:center;gap:9px;padding:0 14px;font-weight:800;background:#0b1c38}
+      .ticketora-topbar{background:#07152f;border-bottom:1px solid #1d3352}.ticketora-search{background:#0e203e;border:1px solid #2b4364;color:#fff}.ticketora-search::placeholder{color:#7389a9}.ticketora-date{border:1px solid #2b4364;background:#0d203e;border-radius:9px;padding:10px 14px;color:#dce6f4;font-size:10px;font-weight:700}
+      .ticketora-kpi,.ticketora-panel{background:var(--panel);border:1px solid #243b5d;border-radius:13px;box-shadow:none}.ticketora-kpi{height:99px;padding:20px 16px;display:flex;align-items:center;gap:12px}.ticketora-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;color:#fff}.ticketora-icon.orange{background:#ff8500}.ticketora-icon.purple{background:#7837ed}.ticketora-icon.green{background:#0ba24c}.ticketora-icon.blue{background:#2868ea}.ticketora-icon.yellow{background:#f5a100}.ticketora-kpi-value{font-size:22px;font-weight:900;line-height:1.1;color:#fff}.ticketora-kpi-label{font-size:10px;color:#9ab0ce;margin-top:5px;font-weight:600}
+      .ticketora-panel{padding:16px;overflow:hidden}.ticketora-panel h3{font-size:14px;font-weight:900;color:#fff;margin:0}.ticketora-panel p{font-size:9px;color:#7390b5;margin-top:4px}.ticketora-select{background:#0e203e;border:1px solid #2c4363;color:#dce6f3;border-radius:8px;font-size:9px;padding:7px 10px}.ticketora-outline-btn{border:1px solid var(--orange);color:#ff9a24;background:transparent;border-radius:7px;padding:7px 12px;font-size:9px;font-weight:800}.ticketora-status-row{height:37px;padding:0 14px;border-top:1px solid #223556;display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:700;color:#d9e3f0}.ticketora-status-row b{color:#ff9800}.green-text{color:#00c968!important}.red-text{color:#ff3d3d!important}.blue-text{color:#3980ff!important}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#d7e6f9;margin-right:5px}.tab-content.hidden{display:none!important}main{background:#07152f!important}.ticketora-sidebar input,.ticketora-sidebar select,.ticketora-sidebar textarea,input,select,textarea{caret-color:#0f172a}.ticketora-panel input,.ticketora-panel select,.ticketora-panel textarea,.modal-input{color:#0f172a!important;background:#f8fafc!important}.ticketora-panel input::placeholder,.ticketora-panel textarea::placeholder{color:#64748b!important}
+      @media(max-width:1100px){.grid-cols-5{grid-template-columns:repeat(3,minmax(0,1fr))}.grid-cols-\[1\.65fr_\.72fr_\.8fr\]{grid-template-columns:1fr}.grid-cols-\[2\.05fr_\.78fr\]{grid-template-columns:1fr}}
     </style>
 </head>
-<body class="h-full flex overflow-hidden font-sans text-slate-800 bg-slate-50">
+<body class="h-full flex overflow-hidden font-sans text-slate-100 bg-[#07152f]">
 
     <!-- Toast Notification Container -->
     <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-3"></div>
 
     <!-- SIDEBAR NAVIGATION -->
-    <aside class="w-64 bg-navy-900 text-slate-300 flex flex-col flex-shrink-0 z-20 shadow-xl transition-all duration-300">
-        <div class="h-20 flex items-center px-6 bg-navy-950 border-b border-slate-800/60 justify-between">
-            <div class="flex items-center gap-3">
-                <!-- Ton propre logo -->
-                <img src="logo.png" alt="Mon Logo" class="w-10 h-10 object-contain rounded-xl">
-                <div class="text-2xl font-extrabold tracking-tight">
-                    <span class="text-white">Ticket</span><span class="text-brand-orange">ora</span>
-                </div>
-            </div>
-            <span class="px-2 py-0.5 text-[10px] font-bold tracking-widest bg-brand-orange/20 text-brand-orange border border-brand-orange/30 rounded uppercase">ADMIN</span>
-        </div>
-
-        <nav class="flex-1 overflow-y-auto p-4 space-y-1 text-sm font-medium">
-            <div class="px-3 py-2 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Général</div>
-            
-            <button onclick="switchTab('overview')" id="nav-overview" class="nav-btn active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white bg-brand-orange shadow-md shadow-brand-orange/20 transition">
-                <i class="fa-solid fa-chart-pie text-lg w-5"></i>
-                <span>Dashboard</span>
-            </button>
-
-            <button onclick="switchTab('events')" id="nav-events" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
-                <i class="fa-solid fa-calendar-star text-lg w-5"></i>
-                <span>Événements</span>
-                <span id="badge-events-count" class="ml-auto bg-slate-800 text-xs px-2 py-0.5 rounded-full text-slate-300">0</span>
-            </button>
-
-            <button onclick="switchTab('organizers')" id="nav-organizers" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
-                <i class="fa-solid fa-user-tie text-lg w-5"></i>
-                <span>Organisateurs</span>
-                <span id="badge-org-pending" class="ml-auto bg-amber-500/20 text-amber-400 font-semibold text-xs px-2 py-0.5 rounded-full border border-amber-500/30">0 Attente</span>
-            </button>
-
-            <div class="pt-4 px-3 py-2 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Finance & Ops</div>
-
-            <button onclick="switchTab('payments')" id="nav-payments" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
-                <i class="fa-solid fa-wallet text-lg w-5"></i>
-                <span>Paiements & Retraits</span>
-            </button>
-
-            <button onclick="switchTab('scanner')" id="nav-scanner" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition">
-                <i class="fa-solid fa-qrcode text-lg w-5"></i>
-                <span>Scanners & Contrôle</span>
-            </button>
-        </nav>
-
-        <div class="p-4 bg-navy-950 border-t border-slate-800/60 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-full bg-brand-orange text-white flex items-center justify-center font-bold text-xs">
-                    SA
-                </div>
-                <div class="text-xs">
-                    <p class="font-semibold text-white">Super Admin</p>
-                    <p class="text-slate-400">ticketora2026@gmail.com</p>
-                </div>
-            </div>
-            <button onclick="logoutAdmin()" class="text-slate-400 hover:text-rose-400 transition p-1.5" title="Déconnexion">
-                <i class="fa-solid fa-arrow-right-from-bracket"></i>
-            </button>
-        </div>
+    <aside class="ticketora-sidebar w-[250px] flex-shrink-0 z-20">
+      <div class="ticketora-brand"><div class="flex items-center gap-3"><img src="logo.png" alt="Ticketora" class="w-12 h-12 object-contain"><div class="text-[25px] font-extrabold tracking-tight"><span class="text-white">Ticket</span><span class="text-[#ff8a00]">ora</span></div></div></div>
+      <nav class="flex-1 overflow-y-auto px-4 py-5 text-sm font-bold">
+        <div class="ticketora-section-title">PRINCIPAL</div>
+        <button onclick="switchTab('overview')" id="nav-overview" class="nav-btn ticketora-nav active"><i class="fa-solid fa-house text-[12px]"></i><span>Dashboard</span></button>
+        <div class="ticketora-section-title mt-5">GESTION</div>
+        <button onclick="switchTab('events')" id="nav-events" class="nav-btn ticketora-nav"><i class="fa-regular fa-calendar text-[13px]"></i><span>Événements</span></button>
+        <button onclick="switchTab('tickets')" id="nav-tickets" class="nav-btn ticketora-nav"><i class="fa-solid fa-ticket text-[12px]"></i><span>Billets</span></button>
+        <button onclick="switchTab('users')" id="nav-users" class="nav-btn ticketora-nav"><i class="fa-solid fa-user text-[12px]"></i><span>Utilisateurs</span></button>
+        <button onclick="switchTab('organizers')" id="nav-organizers" class="nav-btn ticketora-nav"><i class="fa-solid fa-user-tie text-[12px]"></i><span>Organisateurs</span></button>
+        <button onclick="switchTab('organizers')" class="ticketora-nav"><i class="fa-regular fa-rectangle-list text-[12px]"></i><span>Demandes d'accès</span></button>
+        <button onclick="switchTab('chat')" id="nav-chat" class="nav-btn ticketora-nav"><i class="fa-regular fa-comments text-[12px]"></i><span>Chat</span></button>
+        <button onclick="switchTab('payments')" id="nav-payments" class="nav-btn ticketora-nav"><i class="fa-regular fa-credit-card text-[12px]"></i><span>Paiements</span></button>
+        <button onclick="switchTab('payments')" class="ticketora-nav"><i class="fa-solid fa-right-left text-[12px]"></i><span>Retraits</span></button>
+        <button onclick="switchTab('cagnottes')" id="nav-cagnottes" class="nav-btn ticketora-nav"><i class="fa-solid fa-piggy-bank text-[12px]"></i><span>Cagnottes</span></button>
+        <button onclick="switchTab('scanner')" id="nav-scanner" class="nav-btn ticketora-nav"><i class="fa-solid fa-user-check text-[12px]"></i><span>Agents / Scanners</span></button>
+        <div class="ticketora-section-title mt-5">SYSTÈME</div>
+        <button onclick="showAdminPlaceholder('Journaux d’activité')" class="ticketora-nav"><i class="fa-regular fa-clock text-[12px]"></i><span>Journaux d'activité</span></button>
+        <button onclick="switchTab('settings')" id="nav-settings" class="nav-btn ticketora-nav"><i class="fa-solid fa-gear text-[12px]"></i><span>Paramètres</span></button>
+      </nav>
+      <button onclick="logoutAdmin()" class="ticketora-logout"><i class="fa-solid fa-arrow-right-from-bracket"></i><span>Déconnexion</span></button>
     </aside>
-
-    <!-- MAIN CONTENT AREA -->
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-        
-        <!-- HEADER TOP BAR -->
-        <header class="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between z-10 flex-shrink-0">
-            <div class="relative w-96">
-                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-                <input type="text" id="global-search-input" onkeyup="filterAdminData()" placeholder="Rechercher un événement, un organisateur..." class="w-full pl-10 pr-4 py-2 bg-slate-100/80 border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:bg-white transition">
-            </div>
-
-            <div class="flex items-center gap-5">
-                <button onclick="openModal('create-event-modal')" class="bg-brand-orange hover:bg-brand-orangeDark text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm shadow-brand-orange/30 flex items-center gap-2 transition">
-                    <i class="fa-solid fa-plus"></i>
-                    <span>Créer un Événement</span>
-                </button>
-            </div>
-        </header>
-
+      <header class="ticketora-topbar h-[74px] flex items-center justify-between px-6 flex-shrink-0">
+        <div class="relative w-[245px]"><i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[#6f88aa] text-xs"></i><input type="text" id="global-search-input" onkeyup="filterAdminData()" placeholder="Rechercher..." class="ticketora-search w-full pl-9 pr-3 py-2.5 rounded-lg text-xs focus:outline-none"></div>
+        <div class="flex items-center gap-5"><button onclick="showAdminNotifications()" class="relative text-white" title="Notifications"><i class="fa-regular fa-bell text-[14px]"></i><span class="absolute -top-2 -right-2 bg-[#ff9d00] text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center">0</span></button><div class="flex items-center gap-3"><div class="w-9 h-9 rounded-full bg-[#f0f3f7] text-[#71809a] flex items-center justify-center font-bold">A</div><div class="leading-tight"><div class="text-white text-xs font-extrabold">Administrateur</div><div class="text-[#8194b1] text-[10px] font-semibold">Super Admin</div></div></div></div>
+      </header>
         <!-- MAIN DYNAMIC CONTAINER -->
         <main class="flex-1 overflow-y-auto p-8">
 
             <!-- TAB 1: OVERVIEW DASHBOARD -->
-            <section id="tab-overview" class="tab-content space-y-8">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h1 class="text-2xl font-extrabold text-navy-900 tracking-tight">Tableau de bord Général</h1>
-                        <p class="text-sm text-slate-500">Vue d'ensemble des performances de <span class="font-bold text-navy-900">Ticket</span><span class="font-bold text-brand-orange">ora</span></p>
-                    </div>
-                </div>
-
-                <!-- KPI STAT CARDS -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Commissions Perçues</span>
-                            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                                <i class="fa-solid fa-wallet text-lg"></i>
-                            </div>
-                        </div>
-                        <div class="mt-4">
-                            <div id="stat-revenue" class="text-3xl font-black text-navy-900">0 FCFA</div>
-                        </div>
-                        <div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500"></div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Billets Vendus</span>
-                            <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                                <i class="fa-solid fa-ticket text-lg"></i>
-                            </div>
-                        </div>
-                        <div class="mt-4">
-                            <div id="stat-tickets" class="text-3xl font-black text-navy-900">0</div>
-                        </div>
-                        <div class="absolute bottom-0 left-0 right-0 h-1 bg-blue-500"></div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Événements Actifs</span>
-                            <div class="w-10 h-10 rounded-xl bg-brand-orange/10 text-brand-orange flex items-center justify-center font-bold">
-                                <i class="fa-solid fa-fire text-lg"></i>
-                            </div>
-                        </div>
-                        <div class="mt-4">
-                            <div id="stat-events" class="text-3xl font-black text-navy-900">0</div>
-                        </div>
-                        <div class="absolute bottom-0 left-0 right-0 h-1 bg-brand-orange"></div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Demandes Organisateurs</span>
-                            <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-                                <i class="fa-solid fa-user-clock text-lg"></i>
-                            </div>
-                        </div>
-                        <div class="mt-4">
-                            <div id="stat-pending-orgs" class="text-3xl font-black text-amber-600">0</div>
-                        </div>
-                        <div class="absolute bottom-0 left-0 right-0 h-1 bg-amber-500"></div>
-                    </div>
-                </div>
-
-                <!-- CHARTS SECTION -->
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
-                        <h3 class="text-lg font-bold text-navy-900 mb-4">Évolution des Ventes</h3>
-                        <div class="h-72"><canvas id="revenueChart"></canvas></div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
-                        <h3 class="text-lg font-bold text-navy-900 mb-4">Répartition par Catégories</h3>
-                        <div class="h-60 flex items-center justify-center"><canvas id="categoryChart"></canvas></div>
-                    </div>
-                </div>
-
-                <!-- TABLES GRID: Recent Transactions & Pending Organizers -->
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-lg font-bold text-navy-900 flex items-center gap-2">
-                                <i class="fa-solid fa-shield-halved text-brand-orange"></i> Demandes Organisateurs En Attente
-                            </h3>
-                            <button onclick="switchTab('organizers')" class="text-xs text-brand-orange font-bold hover:underline">Voir tout</button>
-                        </div>
-                        <div id="dashboard-pending-orgs-list" class="divide-y divide-slate-100">
-                            <!-- Injected dynamically -->
-                        </div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-lg font-bold text-navy-900">Dernières Ventes</h3>
-                            <button onclick="switchTab('payments')" class="text-xs text-brand-orange font-bold hover:underline">Voir tout</button>
-                        </div>
-                        <div id="dashboard-recent-sales-list" class="divide-y divide-slate-100">
-                            <!-- Injected dynamically -->
-                        </div>
-                    </div>
-                </div>
+            <section id="tab-overview" class="tab-content space-y-4">
+              <div class="flex items-center justify-between mb-3"><div><h1 class="text-[25px] font-extrabold text-white leading-tight">Dashboard</h1><p class="text-[11px] text-[#6f8aaa]">Accueil / Dashboard</p></div><div id="admin-current-date" class="ticketora-date"><i class="fa-regular fa-calendar mr-1"></i> 05/09/2026</div></div>
+              <div class="grid grid-cols-5 gap-3.5">
+                <div class="ticketora-kpi"><div class="ticketora-icon orange"><i class="fa-regular fa-calendar"></i></div><div><div id="stat-events" class="ticketora-kpi-value">0</div><div class="ticketora-kpi-label">Événements</div></div></div>
+                <div class="ticketora-kpi"><div class="ticketora-icon purple"><i class="fa-solid fa-ticket"></i></div><div><div id="stat-tickets" class="ticketora-kpi-value">0</div><div class="ticketora-kpi-label">Billets vendus</div></div></div>
+                <div class="ticketora-kpi"><div class="ticketora-icon green"><i class="fa-solid fa-franc-sign"></i></div><div><div id="stat-revenue" class="ticketora-kpi-value">0 FCFA</div><div class="ticketora-kpi-label">Revenus totaux</div></div></div>
+                <div class="ticketora-kpi"><div class="ticketora-icon blue"><i class="fa-solid fa-user"></i></div><div><div id="stat-users" class="ticketora-kpi-value">0</div><div class="ticketora-kpi-label">Utilisateurs</div></div></div>
+                <div class="ticketora-kpi"><div class="ticketora-icon yellow"><i class="fa-solid fa-user-tie"></i></div><div><div id="stat-organizers" class="ticketora-kpi-value">0</div><div class="ticketora-kpi-label">Organisateurs</div></div></div>
+              </div>
+              <div class="grid grid-cols-[1.65fr_.72fr_.8fr] gap-3.5">
+                <div class="ticketora-panel h-[230px]"><div class="flex items-center justify-between"><div><h3>Ventes de billets</h3><p>7 derniers jours</p></div><select class="ticketora-select"><option>7 derniers jours</option><option>30 derniers jours</option></select></div><div class="h-[165px] mt-2"><canvas id="revenueChart"></canvas></div></div>
+                <div class="ticketora-panel h-[230px]"><h3>Répartition des billets</h3><div class="h-[145px] mt-1 flex items-center justify-center"><canvas id="categoryChart"></canvas></div><div class="grid grid-cols-2 gap-x-2 text-[10px] font-semibold mt-1"><span><b class="dot"></b>Standard (<span id="count-standard">0</span>)</span><span><b class="dot"></b>VIP (<span id="count-vip">0</span>)</span><span><b class="dot"></b>VVIP (<span id="count-vvip">0</span>)</span><span><b class="dot"></b>Autre (<span id="count-other">0</span>)</span></div></div>
+                <div class="ticketora-panel h-[230px] p-0"><div class="p-4 pb-3"><h3>Activité récente</h3></div><div id="dashboard-activity-list" class="border-t border-[#223556] min-h-[110px] px-4 py-5 text-[10px] text-[#7590b4]">Aucune activité pour le moment</div><button onclick="switchTab('logs')" class="w-full text-left px-4 py-3 border-t border-[#223556] text-[10px] text-[#ff8a00] font-bold">Voir toute l'activité ›</button></div>
+              </div>
+              <div class="grid grid-cols-[2.05fr_.78fr] gap-3.5">
+                <div class="ticketora-panel h-[205px] p-0"><div class="flex items-center justify-between p-4"><div><h3>Derniers événements</h3><p>Les événements créés apparaîtront ici</p></div><button onclick="switchTab('events')" class="ticketora-outline-btn">Voir tous les événements</button></div><div id="dashboard-events-list" class="border-t border-[#223556] h-[145px] flex items-center justify-center text-center text-[#7890b2] text-[11px]">Aucun événement trouvé</div></div>
+                <div class="space-y-3.5"><div class="ticketora-panel p-0"><h3 class="p-4 pb-3">Statut des paiements</h3><div class="ticketora-status-row"><span>En attente</span><b id="pay-pending">0</b></div><div class="ticketora-status-row"><span>Complétés</span><b class="green-text" id="pay-completed">0</b></div><div class="ticketora-status-row"><span>Échoués</span><b class="red-text" id="pay-failed">0</b></div><div class="ticketora-status-row"><span>Remboursés</span><b class="blue-text" id="pay-refunded">0</b></div></div><div class="ticketora-panel p-0"><h3 class="p-4 pb-3">Statut des retraits</h3><div class="ticketora-status-row"><span>En attente</span><b id="wd-pending">0</b></div><div class="ticketora-status-row"><span>Traités</span><b class="green-text" id="wd-paid">0</b></div><div class="ticketora-status-row"><span>Rejetés</span><b class="red-text" id="wd-rejected">0</b></div></div></div>
+              </div>
             </section>
 
             <!-- TAB 2: EVENTS MANAGEMENT -->
@@ -360,6 +256,31 @@
                     </table>
                 </div>
             </section>
+
+
+            <section id="tab-tickets" class="tab-content hidden space-y-6">
+              <div><h1 class="text-2xl font-extrabold">Billets</h1><p class="text-sm text-slate-500">Tous les billets émis et leur état de contrôle.</p></div>
+              <div class="ticketora-panel p-0 overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-[#243b5d] text-[10px] uppercase text-[#7892b5]"><th class="p-4">Code</th><th class="p-4">Client</th><th class="p-4">Événement</th><th class="p-4">Type</th><th class="p-4">Montant</th><th class="p-4">État</th></tr></thead><tbody id="admin-tickets-list"></tbody></table></div>
+            </section>
+            <section id="tab-users" class="tab-content hidden space-y-6">
+              <div><h1 class="text-2xl font-extrabold">Utilisateurs</h1><p class="text-sm text-slate-500">Clients ayant acheté des billets.</p></div>
+              <div class="ticketora-panel p-0 overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-[#243b5d] text-[10px] uppercase text-[#7892b5]"><th class="p-4">Nom</th><th class="p-4">Email</th><th class="p-4">Billets</th><th class="p-4">Dernier achat</th></tr></thead><tbody id="admin-users-list"></tbody></table></div>
+            </section>
+            <section id="tab-chat" class="tab-content hidden space-y-6">
+              <div><h1 class="text-2xl font-extrabold">Chat</h1><p class="text-sm text-slate-500">Échangez directement avec les organisateurs.</p></div>
+              <div class="grid grid-cols-[280px_1fr] gap-4 min-h-[520px]">
+                <div class="ticketora-panel p-0"><div class="p-4 border-b border-[#243b5d] font-extrabold">Organisateurs</div><div id="admin-chat-list" class="divide-y divide-[#243b5d] max-h-[470px] overflow-y-auto"></div></div>
+                <div class="ticketora-panel p-0 flex flex-col"><div id="admin-chat-header" class="p-4 border-b border-[#243b5d] font-extrabold">Sélectionnez un organisateur</div><div id="admin-chat-messages" class="flex-1 p-4 space-y-3 overflow-y-auto min-h-[380px]"></div><form id="admin-chat-form" onsubmit="sendAdminChat(event)" class="p-4 border-t border-[#243b5d] flex gap-2"><input id="admin-chat-input" class="flex-1 bg-[#f8fafc] text-slate-900 rounded-xl px-4 py-3 outline-none" placeholder="Écrire un message..." autocomplete="off"><button class="bg-[#ff8a00] text-white font-bold px-5 rounded-xl">Envoyer</button></form></div>
+              </div>
+            </section>
+            <section id="tab-cagnottes" class="tab-content hidden space-y-6">
+<div><h1 class="text-2xl font-extrabold">Cagnottes</h1><p class="text-sm text-[#7892b5]">Créez une campagne, ajoutez plusieurs images puis lancez-la pour la rendre visible au public.</p></div>
+<div class="grid lg:grid-cols-[.8fr_1.2fr] gap-4">
+<div class="ticketora-panel"><h3>Créer une cagnotte</h3><form id="cagnotte-form" onsubmit="createCagnotte(event)" class="space-y-3 mt-4"><input id="cag-title" required class="w-full rounded-xl px-4 py-3" placeholder="Titre de la cagnotte"><textarea id="cag-description" required rows="6" class="w-full rounded-xl px-4 py-3" placeholder="Description"></textarea><input id="cag-target" type="number" min="0" class="w-full rounded-xl px-4 py-3" placeholder="Objectif en FCFA (facultatif)"><input id="cag-images" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple class="w-full text-xs text-slate-300"><p class="text-[10px] text-[#7892b5]">Jusqu'à 6 images, 1,5 Mo maximum par image.</p><button class="w-full bg-[#ff8a00] text-white py-3 rounded-xl font-black">Créer la cagnotte</button></form></div>
+<div class="ticketora-panel"><div class="flex items-center justify-between"><div><h3>Mes cagnottes</h3><p>Gérez leur publication et consultez les contributions.</p></div></div><div id="admin-cagnottes-list" class="mt-4 space-y-3"></div></div>
+</div></section>
+            <section id="tab-logs" class="tab-content hidden space-y-6"><div><h1 class="text-2xl font-extrabold">Journaux d'activité</h1><p class="text-sm text-slate-500">Historique des actions administratives.</p></div><div class="ticketora-panel p-0 overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-[#243b5d] text-[10px] uppercase text-[#7892b5]"><th class="p-4">Date</th><th class="p-4">Action</th><th class="p-4">Type</th><th class="p-4">Détails</th></tr></thead><tbody id="admin-logs-list"></tbody></table></div></section>
+            <section id="tab-settings" class="tab-content hidden space-y-6"><div><h1 class="text-2xl font-extrabold">Paramètres</h1><p class="text-sm text-slate-500">Préférences locales de l'administration.</p></div><div class="ticketora-panel max-w-xl"><label class="flex items-center justify-between gap-4"><span><b>Actualisation automatique</b><small class="block text-[#7892b5] mt-1">Actualiser les données toutes les 30 secondes.</small></span><input id="admin-auto-refresh" type="checkbox" class="w-5 h-5 accent-orange-500" checked onchange="toggleAdminAutoRefresh(this.checked)"></label><button onclick="clearAdminPreferences()" class="mt-5 border border-[#2b4364] px-4 py-2 rounded-xl text-xs font-bold">Réinitialiser les préférences</button></div></section>
 
             <!-- TAB 5: SCANNER SIMULATOR -->
             <section id="tab-scanner" class="tab-content hidden space-y-6">

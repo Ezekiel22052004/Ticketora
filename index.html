@@ -6,136 +6,217 @@
     <title>Ticketora - Billetterie & Événements</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- QR Code & PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        html{scroll-behavior:smooth}
+        body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+        .public-nav{height:80px;background:#06132f}
+        .hero-public{background:linear-gradient(180deg,#061a40 0%,#081d45 100%)}
+        .hero-wrap{min-height:532px}
+        .search-box{box-shadow:0 12px 35px rgba(0,0,0,.16)}
+        .event-card-public{transition:transform .2s ease,box-shadow .2s ease}
+        .event-card-public:hover{transform:translateY(-4px);box-shadow:0 16px 35px rgba(15,23,42,.12)}
+        .soft-section{background:#f5f7fb}
+        .nav-link{color:#e7edf8;transition:.2s ease}
+        .nav-link:hover{color:#f97316}
+        @media(max-width:767px){
+            .public-nav{height:auto;min-height:80px}
+            .hero-wrap{min-height:0}
+        }
+    </style>
 </head>
-<body class="bg-slate-900 text-slate-100 font-sans min-h-screen relative">
+<body class="bg-white text-slate-900 min-h-screen">
 
-    <!-- BARRE DE NAVIGATION (SITE PUBLIC) -->
-    <nav class="bg-slate-800/80 backdrop-blur-md border-b border-slate-700 sticky top-0 z-50 px-6 py-4 flex justify-between items-center">
-        <div class="flex items-center gap-3 text-2xl font-black text-white cursor-pointer" onclick="showSection('client-home')">
-            <img src="logo.png" alt="Logo" class="w-9 h-9 object-contain rounded-xl">
-            <span>Ticket<span class="text-[#F97316]">ora</span></span>
+    <!-- NAVIGATION PUBLIQUE — DESIGN CONSERVÉ -->
+    <nav class="public-nav sticky top-0 z-50 px-6 md:px-8 flex items-center justify-between border-b border-white/5">
+        <button onclick="showSection('client-home');window.scrollTo({top:0,behavior:'smooth'})" class="flex items-center gap-3 cursor-pointer shrink-0" aria-label="Accueil Ticketora">
+            <img src="logo.png" alt="Ticketora" class="w-10 h-10 object-contain">
+            <span class="text-2xl font-black tracking-tight text-white">Ticket<span class="text-[#F97316]">ora</span></span>
+        </button>
+
+        <div class="hidden md:flex items-center gap-7">
+            <button onclick="showSection('client-events');document.getElementById('events-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Événements</button>
+            <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Cagnottes</button>
+            <button onclick="openParticipantLogin()" class="nav-link text-sm font-bold">Connexion</button>
+            <button onclick="openParticipantRegister()" class="bg-[#F97316] hover:bg-orange-600 text-white text-sm px-5 py-3 rounded-xl font-bold shadow-lg shadow-orange-900/20 transition">Créer un compte</button>
         </div>
-        <div class="flex items-center gap-4">
-            <button onclick="showSection('client-events')" class="text-sm font-semibold hover:text-[#F97316] transition">Événements</button>
-            <button onclick="showSection('client-verify')" class="text-sm font-semibold hover:text-[#F97316] transition"><i class="fa-solid fa-qrcode"></i> Vérifier un Billet</button>
-            <!-- Bouton Organisateur à la place d'Admin -->
-            <a href="organisateur.html" class="bg-[#F97316] hover:bg-orange-600 text-xs px-4 py-2 rounded-xl transition text-white font-bold flex items-center gap-2">
-                <i class="fa-solid fa-user-tie"></i> Espace Organisateur
-            </a>
-        </div>
+
+        <button class="md:hidden text-white text-xl" onclick="togglePublicMenu()" aria-label="Menu">
+            <i class="fa-solid fa-bars"></i>
+        </button>
     </nav>
 
-    <!-- ACCUEIL -->
-    <section id="client-home" class="p-8 max-w-7xl mx-auto space-y-12">
-        <div class="text-center space-y-4 py-12 bg-gradient-to-r from-orange-600/20 to-amber-600/20 rounded-3xl border border-orange-500/20">
-            <h1 class="text-4xl md:text-6xl font-black text-white">Vos événements préférés, en un clic.</h1>
-            <p class="text-slate-400 text-sm md:text-base max-w-2xl mx-auto">Achetez vos billets en toute sécurité via Mobile Money & Carte Bancaire.</p>
-            <button onclick="showSection('client-events')" class="bg-[#F97316] hover:bg-orange-600 text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg transition">Découvrir les événements</button>
-        </div>
-    </section>
+    <div id="public-mobile-menu" class="hidden md:hidden fixed top-[80px] left-0 right-0 z-40 bg-[#06132f] border-t border-white/10 px-6 py-5 space-y-3 shadow-xl">
+        <button onclick="showSection('client-events');document.getElementById('events-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Événements</button>
+        <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Cagnottes</button>
+        <button onclick="openParticipantLogin();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Connexion</button>
+        <button onclick="openParticipantRegister();togglePublicMenu()" class="w-full bg-[#F97316] text-white font-bold py-3 rounded-xl">Créer un compte</button>
+    </div>
 
-    <!-- ÉVÉNEMENTS & FILTRES -->
-    <section id="client-events" class="p-8 max-w-7xl mx-auto space-y-6">
-        <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-            <h2 class="text-2xl font-black text-white">Tous les événements</h2>
-            <div class="flex gap-3 w-full md:w-auto">
-                <input type="text" id="search-event" oninput="filterEvents()" placeholder="Rechercher..." class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#F97316]">
-                <select id="filter-category" onchange="filterEvents()" class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white">
-                    <option value="ALL">Toutes catégories</option>
-                    <option value="Concert">Concert</option>
-                    <option value="Festival">Festival</option>
-                    <option value="Formation">Formation</option>
-                </select>
+    <!-- HERO — FORME DE LA CAPTURE -->
+    <section id="client-home" class="hero-public text-white">
+        <div class="hero-wrap max-w-7xl mx-auto px-6 md:px-8 flex items-center py-16 md:py-20">
+            <div class="grid lg:grid-cols-[1.2fr_.9fr] gap-12 xl:gap-16 items-center w-full">
+                <div class="max-w-2xl">
+                    <div class="inline-flex items-center rounded-full border border-[#F97316]/70 px-3 py-1.5 mb-5">
+                        <span class="text-[13px] md:text-sm font-black text-[#F97316]">LA BILLETTERIE NOUVELLE GÉNÉRATION</span>
+                    </div>
+                    <h1 class="text-5xl md:text-6xl xl:text-[60px] leading-[.96] font-black tracking-tight">
+                        Réservez. <span class="text-[#F97316]">Vivez.</span><br>Profitez.
+                    </h1>
+                    <p class="mt-6 text-[17px] md:text-lg leading-8 font-semibold text-blue-100 max-w-2xl">
+                        Découvrez les meilleurs événements, achetez vos billets en quelques clics et gardez tous vos tickets au même endroit.
+                    </p>
+
+                    <div class="search-box mt-7 bg-white rounded-2xl p-2 flex gap-2 max-w-2xl">
+                        <input id="hero-search-event" type="text" onkeydown="if(event.key==='Enter')searchFromHero()" placeholder="Rechercher un événement, une ville, une catégorie..." class="min-w-0 flex-1 px-3 md:px-4 py-3 bg-transparent text-slate-600 placeholder:text-slate-400 text-base font-semibold outline-none">
+                        <button onclick="searchFromHero()" class="shrink-0 bg-[#F97316] hover:bg-orange-600 text-white font-bold px-5 md:px-7 py-3 rounded-xl transition">Rechercher</button>
+                    </div>
+                </div>
+
+                <div class="hidden lg:flex justify-center">
+                    <div class="w-full max-w-[474px] rounded-2xl border border-white/15 bg-white/10 p-7 md:p-8 backdrop-blur-sm">
+                        <div class="flex justify-center">
+                            <div class="w-[180px] h-[180px] bg-[#06132f] flex items-center justify-center">
+                                <img src="logo.png" alt="Ticketora" class="w-full h-full object-contain">
+                            </div>
+                        </div>
+                        <h2 class="text-[25px] text-center font-black mt-5">Votre expérience événementielle</h2>
+                        <p class="text-center text-blue-100 text-lg font-semibold leading-8 mt-4">
+                            Une plateforme pensée pour les participants, organisateurs et équipes de contrôle.
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
-        <div id="client-events-grid" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
     </section>
 
-    <!-- VÉRIFICATEUR PUBLIC -->
-    <section id="client-verify" class="hidden p-8 max-w-md mx-auto space-y-6">
-        <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 text-center space-y-4">
-            <h2 class="text-xl font-bold text-white"><i class="fa-solid fa-qrcode text-[#F97316]"></i> Vérifier un Billet</h2>
-            <p class="text-xs text-slate-400">Entrez le code unique pour vérifier la validité du billet.</p>
-            <input type="text" id="public-scan-input" placeholder="Ex: TCK-98213" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-center uppercase font-mono font-bold text-white">
-            <button onclick="verifyTicketPublic()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition">Vérifier</button>
-            <div id="public-scan-result" class="mt-4"></div>
+    <!-- ÉVÉNEMENTS À VENIR -->
+    <section id="events-public" class="soft-section px-6 md:px-8 py-14 md:py-16">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex flex-col md:flex-row md:items-end justify-between gap-5 mb-8">
+                <div>
+                    <h2 class="text-3xl md:text-4xl font-black tracking-tight text-[#071a3b]">Événements à venir</h2>
+                    <p class="text-slate-500 text-base md:text-lg font-semibold mt-1">Trouvez votre prochaine sortie</p>
+                </div>
+                <button onclick="showSection('client-events');document.getElementById('all-events-grid').scrollIntoView({behavior:'smooth',block:'start'})" class="bg-white hover:bg-slate-100 text-slate-700 font-bold px-5 py-3 rounded-xl shadow-sm border border-slate-200 transition">Voir tout</button>
+            </div>
+
+            <div id="upcoming-events-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            <p id="upcoming-events-empty" class="hidden text-slate-500 font-semibold py-8">Aucun événement publié pour le moment.</p>
         </div>
     </section>
 
-    <!-- MODAL ACHAT (TCHIN + PROMO) -->
-    <div id="modal-buy-ticket" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <!-- TOUS LES ÉVÉNEMENTS -->
+    <section id="client-events" class="hidden soft-section px-6 md:px-8 py-12">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex flex-col lg:flex-row justify-between lg:items-end gap-5 mb-7">
+                <div>
+                    <p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Ticketora</p>
+                    <h2 class="text-3xl font-black text-[#071a3b]">Tous les événements</h2>
+                    <p class="text-slate-500 font-semibold">Recherchez et choisissez votre billet.</p>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                    <input type="text" id="search-event" oninput="filterEvents()" placeholder="Rechercher..." class="w-full sm:w-64 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-200">
+                    <select id="filter-category" onchange="filterEvents()" class="bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:outline-none">
+                        <option value="ALL">Toutes catégories</option>
+                        <option value="Concert">Concert</option>
+                        <option value="Festival">Festival</option>
+                        <option value="Formation">Formation</option>
+                    </select>
+                </div>
+            </div>
+            <div id="all-events-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        </div>
+    </section>
+
+    <!-- CAGNOTTES -->
+    <section id="cagnottes-public" class="bg-white px-6 md:px-8 py-14">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex items-end justify-between gap-5 mb-7"><div><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Ticketora</p><h2 class="text-3xl font-black text-[#071a3b]">Cagnottes</h2><p class="text-slate-500 font-semibold">Soutenez les projets et initiatives qui comptent.</p></div></div>
+            <div id="public-cagnottes-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            <div id="public-cagnottes-empty" class="rounded-3xl bg-slate-50 border border-slate-200 p-8 md:p-12 text-center"><div class="w-14 h-14 mx-auto rounded-2xl bg-orange-50 text-[#F97316] flex items-center justify-center text-xl"><i class="fa-solid fa-hand-holding-heart"></i></div><h3 class="text-xl font-black text-[#071a3b] mt-4">Aucune cagnotte active</h3><p class="text-slate-500 max-w-xl mx-auto mt-2 font-medium">Les prochaines campagnes de collecte apparaîtront ici.</p></div>
+        </div>
+    </section>
+    <div id="modal-cagnotte" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[75]"><div class="bg-white w-full max-w-md rounded-3xl p-7 relative"><button onclick="closeCagnotteModal()" class="absolute top-4 right-4 text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button><div class="w-12 h-12 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-hand-holding-heart"></i></div><h3 id="cag-modal-title" class="text-2xl font-black text-[#071a3b] mt-4"></h3><p id="cag-modal-desc" class="text-sm text-slate-500 mt-2"></p><div class="mt-5 space-y-3"><input id="cag-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Votre nom (facultatif)"><input id="cag-email" type="email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Email (facultatif)"><input id="cag-amount" type="number" min="100" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-bold" placeholder="Montant de votre contribution en FCFA"><button onclick="contributeCagnotte()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Contribuer avec Tchin</button><p class="text-[11px] text-slate-400">Le montant n’est pas fixé par la cagnotte : vous choisissez librement votre contribution (minimum 100 FCFA pour le paiement).</p></div></div></div>
+
+    <!-- VÉRIFICATION PUBLIQUE -->
+    <section id="client-verify" class="hidden bg-[#071a3b] px-6 py-14">
+        <div class="max-w-md mx-auto">
+            <div class="bg-white rounded-3xl p-7 text-center shadow-2xl">
+                <div class="w-14 h-14 mx-auto rounded-2xl bg-orange-50 text-[#F97316] flex items-center justify-center text-xl"><i class="fa-solid fa-qrcode"></i></div>
+                <h2 class="text-2xl font-black text-[#071a3b] mt-4">Vérifier un billet</h2>
+                <p class="text-sm text-slate-500 mt-2">Entrez le code unique pour vérifier la validité du billet.</p>
+                <input type="text" id="public-scan-input" placeholder="Ex: TCK-98213" class="mt-5 w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-center uppercase font-mono font-bold text-slate-800">
+                <button onclick="verifyTicketPublic()" class="mt-3 w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition">Vérifier</button>
+                <div id="public-scan-result" class="mt-4"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- MODAL ACHAT — FONCTIONNALITÉ INTACTE -->
+    <div id="modal-buy-ticket" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[70]">
         <div class="bg-slate-800 w-full max-w-lg rounded-2xl border border-slate-700 p-6 space-y-6 relative max-h-[90vh] overflow-y-auto">
             <button onclick="closeBuyModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
-            
             <div id="buy-step-1" class="space-y-4">
                 <h3 class="text-xl font-bold text-white" id="modal-event-title">Achat de Billet</h3>
                 <p class="text-xs text-slate-400" id="modal-event-price"></p>
-                <div>
-                    <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Nom complet</label>
-                    <input type="text" id="buy-name" required placeholder="Ex: Marc Koffi" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Email</label>
-                    <input type="email" id="buy-email" required placeholder="nom@exemple.com" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Type de billet</label>
-                    <select id="buy-ticket-type" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white"></select>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Code Promo (Optionnel)</label>
-                    <div class="flex gap-2">
-                        <input type="text" id="buy-promo" placeholder="Ex: PROMO10" class="uppercase w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white">
-                        <button onclick="applyPromoCode()" class="bg-slate-700 text-xs px-3 py-2 rounded-xl font-bold hover:bg-slate-600">Appliquer</button>
-                    </div>
-                </div>
-                <button onclick="processPayment()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-credit-card"></i> Payer avec Tchin
-                </button>
+                <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">Nom complet</label><input type="text" id="buy-name" required placeholder="Ex: Marc Koffi" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white"></div>
+                <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">Email</label><input type="email" id="buy-email" required placeholder="nom@exemple.com" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white"></div>
+                <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">Type de billet</label><select id="buy-ticket-type" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white"></select></div>
+                <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">Code Promo (Optionnel)</label><div class="flex gap-2"><input type="text" id="buy-promo" placeholder="Ex: JEUNES10" class="uppercase w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white"><button type="button" onclick="applyPromoCode()" class="bg-slate-700 text-xs px-3 py-2 rounded-xl font-bold hover:bg-slate-600 text-white">Appliquer</button></div><div id="buy-promo-message" class="text-xs mt-2"></div></div>
+                <button onclick="processPayment()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2"><i class="fa-solid fa-credit-card"></i> Payer avec Tchin</button>
             </div>
-
-            <!-- TICKET PDF GÉNÉRÉ À PARTIR DU MODÈLE TICKETORA -->
             <div id="buy-step-2" class="hidden space-y-4 text-center">
                 <div id="ticket-pdf-area" class="relative overflow-hidden mx-auto bg-white" style="width:1200px;height:560px;max-width:100%;aspect-ratio:1200/560;">
                     <img src="ticket-template.jpeg" alt="Modèle Ticketora" class="absolute inset-0 w-full h-full object-cover">
-                    <div class="absolute left-[17%] top-[29%] w-[50%] text-left">
-                        <div id="ticket-event-display" class="font-black text-[26px] text-[#0F172A] leading-tight"></div>
-                    </div>
-                    <div class="absolute left-[17%] top-[43%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]">
-                        <span id="ticket-date-display"></span>
-                    </div>
-                    <div class="absolute left-[17%] top-[54%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]">
-                        <span id="ticket-location-display"></span>
-                    </div>
-                    <div class="absolute left-[17%] top-[65%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]">
-                        <span id="ticket-type-display"></span>
-                    </div>
-                    <div class="absolute left-[17%] top-[76%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]">
-                        <span id="ticket-holder-display"></span>
-                    </div>
-                    <div class="absolute right-[5.5%] top-[28%] w-[16%] flex flex-col items-center gap-2">
-                        <div id="qrcode" class="bg-white p-2 rounded-lg"></div>
-                        <div id="ticket-code-display" class="font-mono text-[13px] font-black text-[#0F172A] bg-white/90 px-2 py-1 rounded"></div>
-                    </div>
+                    <div class="absolute left-[17%] top-[29%] w-[50%] text-left"><div id="ticket-event-display" class="font-black text-[26px] text-[#0F172A] leading-tight"></div></div>
+                    <div class="absolute left-[17%] top-[43%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]"><span id="ticket-date-display"></span></div>
+                    <div class="absolute left-[17%] top-[54%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]"><span id="ticket-location-display"></span></div>
+                    <div class="absolute left-[17%] top-[65%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]"><span id="ticket-type-display"></span></div>
+                    <div class="absolute left-[17%] top-[76%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]"><span id="ticket-holder-display"></span></div>
+                    <div class="absolute right-[5.5%] top-[28%] w-[16%] flex flex-col items-center gap-2"><div id="qrcode" class="bg-white p-2 rounded-lg"></div><div id="ticket-code-display" class="font-mono text-[13px] font-black text-[#0F172A] bg-white/90 px-2 py-1 rounded"></div></div>
                 </div>
                 <p class="text-xs text-slate-400">Paiement confirmé. Votre billet est unique et son QR Code sera contrôlé à l’entrée.</p>
-                <button onclick="downloadPDF()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-download"></i> Télécharger mon billet (PDF)
-                </button>
+                <button onclick="downloadPDF()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2"><i class="fa-solid fa-download"></i> Télécharger mon billet (PDF)</button>
             </div>
         </div>
     </div>
 
-    <!-- BOUTON SUPPORT WHATSAPP DIRECT (+228 72753685) -->
-    <a href="https://wa.me/22872753685" target="_blank" class="fixed bottom-6 right-6 bg-emerald-500 hover:bg-emerald-600 text-white p-4 rounded-full shadow-2xl z-40 flex items-center gap-2 font-bold text-sm transition transform hover:scale-105" title="Support WhatsApp Direct">
-        <i class="fa-brands fa-whatsapp text-2xl"></i>
-        <span class="hidden md:inline">Assistance (+228 72753685)</span>
+    <!-- MODALES COMPTE PARTICIPANT : interface prête sans toucher au paiement -->
+    <div id="participant-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-[80] items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-3xl p-7 relative shadow-2xl">
+            <button onclick="closeParticipantModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-xl"></i></button>
+            <div class="w-12 h-12 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-user"></i></div>
+            <h3 id="participant-modal-title" class="text-2xl font-black text-[#071a3b] mt-4">Connexion</h3>
+            <p class="text-sm text-slate-500 mt-2">L'espace participant sera activé avec le compte client et l'historique des billets.</p>
+            <div class="mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-600 font-medium">Pour le moment, vous pouvez acheter un billet directement sans créer de compte.</div>
+            <button onclick="closeParticipantModal();document.getElementById('events-public').scrollIntoView({behavior:'smooth'})" class="mt-5 w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Découvrir les événements</button>
+        </div>
+    </div>
+
+    <!-- SUPPORT -->
+    <a href="https://wa.me/22872753685" target="_blank" rel="noopener noreferrer" class="fixed bottom-6 right-6 bg-emerald-500 hover:bg-emerald-600 text-white p-4 rounded-full shadow-2xl z-40 flex items-center gap-2 font-bold text-sm transition transform hover:scale-105" title="Support WhatsApp">
+        <i class="fa-brands fa-whatsapp text-2xl"></i><span class="hidden md:inline">Assistance</span>
     </a>
+
+    <footer class="bg-[#06132f] text-white px-6 md:px-8 py-10">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-5">
+            <div class="flex items-center gap-3"><img src="logo.png" class="w-9 h-9 object-contain" alt="Ticketora"><span class="font-black text-xl">Ticket<span class="text-[#F97316]">ora</span></span></div>
+            <p class="text-slate-400 text-sm">© 2026 Ticketora. Réservez. Vivez. Profitez.</p>
+        </div>
+    </footer>
 
     <script src="config.js"></script>
     <script src="app.js"></script>
+    <script>
+        function togglePublicMenu(){document.getElementById('public-mobile-menu')?.classList.toggle('hidden')}
+        function searchFromHero(){const q=(document.getElementById('hero-search-event')?.value||'').trim();showSection('client-events');const s=document.getElementById('search-event');if(s)s.value=q;filterEvents();document.getElementById('events-public')?.scrollIntoView({behavior:'smooth'});}
+        function openParticipantLogin(){const m=document.getElementById('participant-modal');document.getElementById('participant-modal-title').innerText='Connexion';m.classList.remove('hidden');m.classList.add('flex')}
+        function openParticipantRegister(){const m=document.getElementById('participant-modal');document.getElementById('participant-modal-title').innerText='Créer un compte';m.classList.remove('hidden');m.classList.add('flex')}
+        function closeParticipantModal(){const m=document.getElementById('participant-modal');m.classList.add('hidden');m.classList.remove('flex')}
+        window.togglePublicMenu=togglePublicMenu;window.searchFromHero=searchFromHero;window.openParticipantLogin=openParticipantLogin;window.openParticipantRegister=openParticipantRegister;window.closeParticipantModal=closeParticipantModal;
+    </script>
 </body>
 </html>

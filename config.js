@@ -1,1 +1,1 @@
-window.TICKETORA_API_URL = "https://ticketora1.onrender.com";
+window.TICKETORA_API_URL = "";

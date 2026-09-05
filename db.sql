@@ -114,3 +114,96 @@ CREATE TABLE IF NOT EXISTS admin_payouts (
 CREATE INDEX IF NOT EXISTS idx_admin_payouts_status ON admin_payouts(status);
 
 ALTER TABLE events ADD COLUMN IF NOT EXISTS image_url TEXT;
+
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id BIGSERIAL PRIMARY KEY,
+  organizer_id BIGINT NOT NULL REFERENCES organizers(id) ON DELETE CASCADE,
+  sender_role VARCHAR(20) NOT NULL CHECK(sender_role IN ('ADMIN','ORGANIZER')),
+  message TEXT NOT NULL CHECK(length(trim(message)) > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  read_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_org ON chat_messages(organizer_id,id);
+
+
+CREATE TABLE IF NOT EXISTS scanner_agents (
+  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES organizers(id) ON DELETE CASCADE,
+  agent_number VARCHAR(60) NOT NULL UNIQUE,
+  name VARCHAR(180) NOT NULL DEFAULT 'Agent scanner',
+  password_hash TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_login_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_scanner_agents_org ON scanner_agents(org_id);
+
+CREATE TABLE IF NOT EXISTS cagnottes (
+  id BIGSERIAL PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  description TEXT NOT NULL,
+  images JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status VARCHAR(20) NOT NULL DEFAULT 'BROUILLON' CHECK(status IN ('BROUILLON','PUBLIE','TERMINE')),
+  target_amount INTEGER,
+  total_amount INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  launched_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_cagnottes_status ON cagnottes(status);
+
+CREATE TABLE IF NOT EXISTS contributions (
+  id BIGSERIAL PRIMARY KEY,
+  cagnotte_id BIGINT NOT NULL REFERENCES cagnottes(id) ON DELETE CASCADE,
+  contributor_name VARCHAR(255),
+  contributor_email VARCHAR(255),
+  amount INTEGER NOT NULL CHECK(amount >= 100),
+  status VARCHAR(20) NOT NULL DEFAULT 'EN_ATTENTE' CHECK(status IN ('EN_ATTENTE','PAYE','ANNULE')),
+  reference VARCHAR(80) UNIQUE NOT NULL,
+  tchin_token VARCHAR(255) UNIQUE,
+  tchin_reference VARCHAR(255),
+  tchin_status VARCHAR(30),
+  tchin_mode VARCHAR(30),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  paid_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_contributions_cagnotte ON contributions(cagnotte_id);
+CREATE INDEX IF NOT EXISTS idx_contributions_tchin ON contributions(tchin_token);
+
+
+-- CODES PROMO / REDUCTIONS
+CREATE TABLE IF NOT EXISTS promo_codes (
+  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES organizers(id) ON DELETE CASCADE,
+  event_id BIGINT REFERENCES events(id) ON DELETE CASCADE,
+  code VARCHAR(60) NOT NULL,
+  discount_type VARCHAR(20) NOT NULL CHECK(discount_type IN ('PERCENT','FIXED')),
+  discount_value INTEGER NOT NULL CHECK(discount_value > 0),
+  starts_at TIMESTAMPTZ,
+  ends_at TIMESTAMPTZ,
+  max_uses INTEGER CHECK(max_uses IS NULL OR max_uses > 0),
+  max_uses_per_customer INTEGER NOT NULL DEFAULT 1 CHECK(max_uses_per_customer > 0),
+  min_amount INTEGER NOT NULL DEFAULT 0 CHECK(min_amount >= 0),
+  allowed_ticket_types JSONB NOT NULL DEFAULT '[]'::jsonb,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(org_id, code)
+);
+CREATE TABLE IF NOT EXISTS promo_usages (
+  id BIGSERIAL PRIMARY KEY,
+  promo_id BIGINT NOT NULL REFERENCES promo_codes(id) ON DELETE CASCADE,
+  order_id BIGINT NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+  customer_email VARCHAR(255) NOT NULL,
+  discount_amount INTEGER NOT NULL CHECK(discount_amount >= 0),
+  status VARCHAR(20) NOT NULL DEFAULT 'RESERVED' CHECK(status IN ('RESERVED','USED','CANCELLED')),
+  reserved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  used_at TIMESTAMPTZ,
+  UNIQUE(promo_id, order_id)
+);
+CREATE INDEX IF NOT EXISTS idx_promo_codes_org ON promo_codes(org_id);
+CREATE INDEX IF NOT EXISTS idx_promo_codes_event ON promo_codes(event_id);
+CREATE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes(code);
+CREATE INDEX IF NOT EXISTS idx_promo_usages_promo ON promo_usages(promo_id,status);
+CREATE INDEX IF NOT EXISTS idx_promo_usages_customer ON promo_usages(promo_id,customer_email,status);
