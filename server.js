@@ -277,21 +277,91 @@ async function scanTicket(code,orgId){const c=await pool.connect();try{await c.q
 app.post('/api/tickets/scan',requireOrg,asyncRoute(async(req,res)=>{const code=clean(req.body.code,32).toUpperCase();if(!code)return res.status(400).json({success:false,message:'Code requis.'});const x=await scanTicket(code,req.session.user.id);res.status(x.http).json(x.data);}));
 app.post('/api/admin/tickets/scan',requireAdmin,asyncRoute(async(req,res)=>{const code=clean(req.body.code,32).toUpperCase();if(!code)return res.status(400).json({success:false,message:'Code requis.'});const r=await pool.query('SELECT * FROM tickets WHERE UPPER(code)=UPPER($1)',[code]);if(!r.rows.length)return res.status(404).json({success:false,status:'INVALID',message:'BILLET NON VALIDE'});const t=r.rows[0];if(t.used)return res.status(409).json({success:false,status:'USED',message:'BILLET DÉJÀ UTILISÉ',ticket:t});const c=await pool.connect();try{await c.query('BEGIN');const u=await c.query('UPDATE tickets SET used=true,used_at=NOW(),scan_count=scan_count+1 WHERE id=$1 AND used=false RETURNING *',[t.id]);await c.query('COMMIT');if(!u.rows.length)return res.status(409).json({success:false,status:'USED',message:'BILLET DÉJÀ UTILISÉ'});res.json({success:true,status:'VALID',message:'ENTRÉE AUTORISÉE',ticket:u.rows[0]});}finally{c.release();}}));
 
+
+// ---------- TCHIN PAYOUTS / DECAISSEMENTS ----------
+async function ensurePayoutTchinColumns(){
+  if(!process.env.DATABASE_URL) return;
+  await pool.query(`
+    ALTER TABLE payouts
+      ADD COLUMN IF NOT EXISTS withdraw_mode VARCHAR(80),
+      ADD COLUMN IF NOT EXISTS tchin_disburse_token VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS tchin_transaction_id VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS tchin_status VARCHAR(30),
+      ADD COLUMN IF NOT EXISTS tchin_fee INTEGER,
+      ADD COLUMN IF NOT EXISTS tchin_debited INTEGER,
+      ADD COLUMN IF NOT EXISTS tchin_error TEXT,
+      ADD COLUMN IF NOT EXISTS tchin_updated_at TIMESTAMPTZ
+  `);
+  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_payouts_tchin_disburse_token ON payouts(tchin_disburse_token) WHERE tchin_disburse_token IS NOT NULL');
+}
+function normalizePayoutAccount(value){
+  const digits=String(value||'').replace(/\D/g,'');
+  if(digits.startsWith('228') && digits.length===11) return digits.slice(3);
+  return digits;
+}
+function payoutTchinMode(value){
+  const mode=clean(value,80);
+  const allowed=['t-money-togo','moov-togo','orange-money-senegal','free-money-senegal','expresso-senegal','wave-senegal','wizall-senegal','djamo-senegal','orange-money-ci','mtn-ci','moov-ci','wave-ci','djamo-ci','moov-benin','mtn-benin','celtiis-benin','orange-money-burkina','moov-burkina','orange-money-mali','moov-mali','mtn-cameroun'];
+  return allowed.includes(mode)?mode:'';
+}
+async function syncTchinPayout(payout){
+  if(!payout?.tchin_disburse_token) return payout;
+  try{
+    const td=await tchinRequest('/disburse/status',{
+      method:'POST',
+      body:JSON.stringify({disburse_token:payout.tchin_disburse_token})
+    });
+    const status=String(td.status||td.data?.status||'').toLowerCase();
+    const tx=td.transaction_id||td.data?.transaction_id||null;
+    if(['success','completed','successful'].includes(status)){
+      const r=await pool.query(
+        `UPDATE payouts SET status='PAYE',tchin_status='success',tchin_transaction_id=COALESCE($1,tchin_transaction_id),tchin_error=NULL,tchin_updated_at=NOW(),processed_at=COALESCE(processed_at,NOW()) WHERE id=$2 RETURNING *`,
+        [tx,payout.id]
+      );
+      return r.rows[0]||payout;
+    }
+    if(['failed','cancelled','canceled','error','rejected'].includes(status)){
+      const msg=td.message||td.data?.message||'Le décaissement Tchin a échoué.';
+      const r=await pool.query(
+        `UPDATE payouts SET status='REFUSE',tchin_status=$1,tchin_error=$2,tchin_updated_at=NOW() WHERE id=$3 RETURNING *`,
+        [status,msg,payout.id]
+      );
+      return r.rows[0]||payout;
+    }
+    if(status){
+      const r=await pool.query(`UPDATE payouts SET tchin_status=$1,tchin_updated_at=NOW() WHERE id=$2 RETURNING *`,[status,payout.id]);
+      return r.rows[0]||payout;
+    }
+  }catch(e){
+    console.error('Tchin payout status:',e.message);
+  }
+  return payout;
+}
+async function syncPendingTchinPayouts(){
+  if(!process.env.TCHIN_PRIVATE_KEY || !process.env.TCHIN_PUBLIC_KEY) return;
+  try{
+    const r=await pool.query("SELECT * FROM payouts WHERE status='VALIDE' AND tchin_disburse_token IS NOT NULL ORDER BY id ASC LIMIT 25");
+    for(const payout of r.rows) await syncTchinPayout(payout);
+  }catch(e){console.error('Tchin pending payouts:',e.message);}
+}
+
 // ---------- STATS / PAYOUTS ----------
 app.get('/api/organizers/stats',requireOrg,asyncRoute(async(req,res)=>{const id=req.session.user.id;const [e,t,p]=await Promise.all([pool.query('SELECT * FROM events WHERE org_id=$1 ORDER BY id DESC',[id]),pool.query('SELECT * FROM tickets WHERE org_id=$1 ORDER BY id DESC',[id]),pool.query('SELECT * FROM payouts WHERE org_id=$1 ORDER BY id DESC',[id])]);const net=t.rows.reduce((s,x)=>s+Number(x.organizer_amount||0),0);res.json({success:true,events:e.rows,tickets:t.rows,payouts:p.rows,netRevenue:net});}));
 app.delete('/api/organizers/events/:id',requireOrg,asyncRoute(async(req,res)=>{const sold=await pool.query('SELECT COUNT(*)::int AS n FROM tickets WHERE event_id=$1',[req.params.id]);const orders=await pool.query('SELECT COUNT(*)::int AS n FROM orders WHERE event_id=$1',[req.params.id]);if(Number(sold.rows[0].n)>0||Number(orders.rows[0].n)>0)return res.status(400).json({success:false,message:'Impossible de supprimer cet événement : des achats ou billets sont déjà liés à cet événement.'});const r=await pool.query('DELETE FROM events WHERE id=$1 AND org_id=$2 RETURNING id',[req.params.id,req.session.user.id]);if(!r.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});res.json({success:true});}));
 app.post('/api/payouts',requireOrg,asyncRoute(async(req,res)=>{
-  const amount=positiveInt(req.body.amount),account=clean(req.body.account,120);
-  if(!amount||!account)return res.status(400).json({success:false,message:'Montant et compte obligatoires.'});
+  const amount=positiveInt(req.body.amount),account=normalizePayoutAccount(req.body.account),withdrawMode=payoutTchinMode(req.body.withdrawMode);
+  if(!amount||!account||!withdrawMode)return res.status(400).json({success:false,message:'Montant, numéro Mobile Money et opérateur Tchin obligatoires.'});
+  if(amount<200)return res.status(400).json({success:false,message:'Le retrait minimum est de 200 FCFA.'});
   const bal=await pool.query(`SELECT COALESCE((SELECT SUM(organizer_amount) FROM tickets WHERE org_id=$1),0)-COALESCE((SELECT SUM(amount) FROM payouts WHERE org_id=$1 AND status IN ('EN_ATTENTE','VALIDE','PAYE')),0) AS available`,[req.session.user.id]);
   const available=Number(bal.rows[0].available||0);
   if(amount>available)return res.status(400).json({success:false,message:`Solde disponible insuffisant. Disponible : ${available} FCFA.`});
-  const r=await pool.query('INSERT INTO payouts(org_id,amount,account) VALUES($1,$2,$3) RETURNING *',[req.session.user.id,amount,account]);
+  const r=await pool.query('INSERT INTO payouts(org_id,amount,account,withdraw_mode,tchin_status) VALUES($1,$2,$3,$4,\'pending\') RETURNING *',[req.session.user.id,amount,account,withdrawMode]);
   res.status(201).json({success:true,payout:r.rows[0],available:available-amount});
 }));
 app.delete('/api/payouts/:id',requireOrg,asyncRoute(async(req,res)=>{const r=await pool.query("DELETE FROM payouts WHERE id=$1 AND org_id=$2 AND status IN ('EN_ATTENTE','REFUSE') RETURNING id",[req.params.id,req.session.user.id]);if(!r.rows.length)return res.status(400).json({success:false,message:'Ce retrait ne peut plus être supprimé.'});res.json({success:true});}));
 app.delete('/api/admin/payouts/:id',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query("DELETE FROM payouts WHERE id=$1 AND status IN ('EN_ATTENTE','REFUSE') RETURNING id",[req.params.id]);if(!r.rows.length)return res.status(400).json({success:false,message:'Ce retrait ne peut plus être supprimé.'});res.json({success:true});}));
 app.get('/api/admin/payouts',requireAdmin,asyncRoute(async(req,res)=>{
+  await syncPendingTchinPayouts();
   const r=await pool.query(`SELECT p.*,o.nom,o.prenom,o.email,o.phone FROM payouts p JOIN organizers o ON o.id=p.org_id ORDER BY CASE WHEN p.status='EN_ATTENTE' THEN 0 WHEN p.status='VALIDE' THEN 1 ELSE 2 END,p.id DESC`);
   const bal=await pool.query(`SELECT COALESCE(SUM(organizer_amount),0) AS total FROM tickets`);
   res.json({success:true,payouts:r.rows,totalOrganizerRevenue:Number(bal.rows[0].total||0)});
@@ -301,17 +371,75 @@ app.post('/api/admin/payouts/:id/status',requireAdmin,asyncRoute(async(req,res)=
   if(!['VALIDE','REFUSE','PAYE'].includes(status))return res.status(400).json({success:false,message:'Statut de retrait invalide.'});
   const current=await pool.query('SELECT p.*,o.nom,o.prenom FROM payouts p JOIN organizers o ON o.id=p.org_id WHERE p.id=$1',[req.params.id]);
   if(!current.rows.length)return res.status(404).json({success:false,message:'Demande de retrait introuvable.'});
-  const payout=current.rows[0];
+  let payout=current.rows[0];
   if(status==='VALIDE' && payout.status!=='EN_ATTENTE')return res.status(400).json({success:false,message:'Cette demande ne peut plus être validée.'});
-  if(status==='PAYE' && !['VALIDE','EN_ATTENTE'].includes(payout.status))return res.status(400).json({success:false,message:'Cette demande ne peut pas être marquée payée.'});
-  if(['VALIDE','PAYE'].includes(status)){
-    const bal=await pool.query(`SELECT COALESCE((SELECT SUM(organizer_amount) FROM tickets WHERE org_id=$1),0)-COALESCE((SELECT SUM(amount) FROM payouts WHERE org_id=$1 AND id<>$2 AND status IN ('EN_ATTENTE','VALIDE','PAYE')),0) AS available`,[payout.org_id,payout.id]);
-    if(Number(payout.amount)>Number(bal.rows[0].available||0))return res.status(400).json({success:false,message:'Solde organisateur insuffisant pour ce retrait.'});
+  if(status==='PAYE' && !['VALIDE','EN_ATTENTE'].includes(payout.status))return res.status(400).json({success:false,message:'Cette demande ne peut pas être payée.'});
+
+  if(status==='REFUSE'){
+    const r=await pool.query(`UPDATE payouts SET status='REFUSE',processed_at=NULL,tchin_error=NULL,tchin_updated_at=NOW() WHERE id=$1 RETURNING *`,[payout.id]);
+    await logAction(pool,'ADMIN','ADMIN','PAYOUT_REFUSE','payout',payout.id,{organizer_id:payout.org_id,amount:payout.amount});
+    return res.json({success:true,payout:r.rows[0]});
   }
-  const r=await pool.query(`UPDATE payouts SET status=$1,processed_at=CASE WHEN $1='PAYE' THEN NOW() ELSE processed_at END WHERE id=$2 RETURNING *`,[status,payout.id]);
-  await logAction(pool,'ADMIN','ADMIN',`PAYOUT_${status}`,'payout',payout.id,{organizer_id:payout.org_id,amount:payout.amount});
-  res.json({success:true,payout:r.rows[0]});
+
+  const bal=await pool.query(`SELECT COALESCE((SELECT SUM(organizer_amount) FROM tickets WHERE org_id=$1),0)-COALESCE((SELECT SUM(amount) FROM payouts WHERE org_id=$1 AND id<>$2 AND status IN ('EN_ATTENTE','VALIDE','PAYE')),0) AS available`,[payout.org_id,payout.id]);
+  if(Number(payout.amount)>Number(bal.rows[0].available||0))return res.status(400).json({success:false,message:'Solde organisateur insuffisant pour ce retrait.'});
+
+  if(status==='VALIDE'){
+    const r=await pool.query(`UPDATE payouts SET status='VALIDE',tchin_status=COALESCE(tchin_status,'pending'),tchin_error=NULL,tchin_updated_at=NOW() WHERE id=$1 RETURNING *`,[payout.id]);
+    await logAction(pool,'ADMIN','ADMIN','PAYOUT_VALIDE','payout',payout.id,{organizer_id:payout.org_id,amount:payout.amount});
+    return res.json({success:true,payout:r.rows[0],message:'Retrait validé. Il doit maintenant être payé via Tchin.'});
+  }
+
+  // PAYE = déclenchement réel du décaissement Tchin.
+  if(!process.env.TCHIN_PUBLIC_KEY||!process.env.TCHIN_PRIVATE_KEY)return res.status(503).json({success:false,message:'Tchin n’est pas configuré sur le serveur.'});
+  if(!payout.withdraw_mode)return res.status(400).json({success:false,message:'Opérateur Tchin manquant sur cette demande de retrait.'});
+  if(payout.tchin_disburse_token)return res.status(409).json({success:false,message:'Un décaissement Tchin existe déjà pour cette demande. Vérifiez son statut.'});
+
+  let init;
+  try{
+    init=await tchinRequest('/disburse/initiate',{
+      method:'POST',
+      body:JSON.stringify({
+        account_alias:payout.account,
+        amount:Number(payout.amount),
+        withdraw_mode:payout.withdraw_mode
+      })
+    });
+    if(!init.success||!init.disburse_token)throw new Error(init.message||'Tchin n’a pas préparé le décaissement.');
+  }catch(e){
+    await pool.query(`UPDATE payouts SET tchin_status='failed',tchin_error=$1,tchin_updated_at=NOW() WHERE id=$2`,[e.message,payout.id]);
+    return res.status(400).json({success:false,message:`Tchin : ${e.message}`});
+  }
+
+  await pool.query(`UPDATE payouts SET tchin_disburse_token=$1,tchin_fee=$2,tchin_debited=$3,tchin_status='initiated',tchin_error=NULL,tchin_updated_at=NOW(),status='VALIDE' WHERE id=$4`,
+    [init.disburse_token,Number(init.fee||0),Number(init.debited||0),payout.id]);
+
+  let submit;
+  try{
+    submit=await tchinRequest('/disburse/submit',{
+      method:'POST',
+      body:JSON.stringify({disburse_token:init.disburse_token})
+    });
+  }catch(e){
+    await pool.query(`UPDATE payouts SET tchin_status='failed',tchin_error=$1,tchin_updated_at=NOW() WHERE id=$2`,[e.message,payout.id]);
+    return res.status(400).json({success:false,message:`Tchin : ${e.message}`});
+  }
+
+  const submitStatus=String(submit.status||'').toLowerCase();
+  if(['success','completed','successful'].includes(submitStatus)){
+    const updated=await pool.query(`UPDATE payouts SET status='PAYE',tchin_status='success',tchin_transaction_id=$1,tchin_error=NULL,tchin_updated_at=NOW(),processed_at=NOW() WHERE id=$2 RETURNING *`,
+      [submit.transaction_id||submit.data?.transaction_id||null,payout.id]);
+    await logAction(pool,'ADMIN','ADMIN','PAYOUT_PAYE_TCHIN','payout',payout.id,{organizer_id:payout.org_id,amount:payout.amount,tchin_transaction_id:submit.transaction_id||null});
+    return res.json({success:true,payout:updated.rows[0],message:'Retrait envoyé avec succès via Tchin.'});
+  }
+
+  // pending: ne jamais resoumettre. Le prochain rafraîchissement vérifie le statut.
+  const updated=await pool.query(`UPDATE payouts SET tchin_status='pending',tchin_error=$1,tchin_updated_at=NOW() WHERE id=$2 RETURNING *`,
+    [submit.message||'Décaissement Tchin en cours.',payout.id]);
+  await logAction(pool,'ADMIN','ADMIN','PAYOUT_TCHIN_PENDING','payout',payout.id,{organizer_id:payout.org_id,amount:payout.amount});
+  res.json({success:true,payout:updated.rows[0],message:'Décaissement Tchin en cours. Ticketora ne renverra pas la demande.'});
 }));
+
 app.get('/api/admin/withdrawals',requireAdmin,asyncRoute(async(req,res)=>{
   await ensureAdminPayoutTable();
   const [rev,used,rows]=await Promise.all([pool.query(`SELECT COALESCE(SUM(admin_commission),0) AS total FROM tickets`),pool.query(`SELECT COALESCE(SUM(amount),0) AS total FROM admin_payouts WHERE status IN ('EN_ATTENTE','PAYE')`),pool.query(`SELECT * FROM admin_payouts ORDER BY id DESC`)]);
@@ -514,4 +642,4 @@ app.get('/api/tickets/:code/qr',asyncRoute(async(req,res)=>{const code=clean(req
 app.use(express.static(__dirname));
 app.use((err,req,res,next)=>{console.error(err);if(res.headersSent)return next(err);res.status(500).json({success:false,message:'Erreur interne du serveur.'});});
 
-app.listen(PORT,async()=>{try{await ensureEventImageColumn();await ensureAdminPayoutTable();await ensureChatTable();await ensureScannerTable();await ensureCagnotteTables();await ensurePromoTables();console.log(`Ticketora API sur http://localhost:${PORT}`);}catch(e){console.error('Initialisation base admin retraits:',e.message);console.log(`Ticketora API sur http://localhost:${PORT}`);}});
+app.listen(PORT,async()=>{try{await ensureEventImageColumn();await ensureAdminPayoutTable();await ensurePayoutTchinColumns();await ensureChatTable();await ensureScannerTable();await ensureCagnotteTables();await ensurePromoTables();console.log(`Ticketora API sur http://localhost:${PORT}`);setInterval(syncPendingTchinPayouts,120000);}catch(e){console.error('Initialisation base admin retraits:',e.message);console.log(`Ticketora API sur http://localhost:${PORT}`);}});

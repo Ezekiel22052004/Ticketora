@@ -76,7 +76,15 @@ CREATE TABLE IF NOT EXISTS payouts (
   org_id BIGINT NOT NULL REFERENCES organizers(id) ON DELETE RESTRICT,
   amount INTEGER NOT NULL CHECK (amount > 0),
   account VARCHAR(120) NOT NULL,
+  withdraw_mode VARCHAR(80),
   status VARCHAR(20) NOT NULL DEFAULT 'EN_ATTENTE' CHECK (status IN ('EN_ATTENTE','VALIDE','REFUSE','PAYE')),
+  tchin_disburse_token VARCHAR(255),
+  tchin_transaction_id VARCHAR(255),
+  tchin_status VARCHAR(30),
+  tchin_fee INTEGER,
+  tchin_debited INTEGER,
+  tchin_error TEXT,
+  tchin_updated_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   processed_at TIMESTAMPTZ
 );
@@ -100,6 +108,7 @@ CREATE INDEX IF NOT EXISTS idx_tickets_event ON tickets(event_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_org ON tickets(org_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_code ON tickets(code);
 CREATE INDEX IF NOT EXISTS idx_payouts_org ON payouts(org_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payouts_tchin_disburse_token ON payouts(tchin_disburse_token) WHERE tchin_disburse_token IS NOT NULL;
 
 
 CREATE TABLE IF NOT EXISTS admin_payouts (

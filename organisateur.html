@@ -212,8 +212,35 @@
                         <input type="number" id="payout-amount" placeholder="Ex: 50000" class="w-full bg-slate-50 border rounded-xl p-3 text-sm">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Numéro Mobile Money / IBAN</label>
-                        <input type="text" id="payout-account" placeholder="+228 90 00 00 00 (TMoney/Flooz)" class="w-full bg-slate-50 border rounded-xl p-3 text-sm">
+                        <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Opérateur Mobile Money</label>
+                        <select id="payout-mode" class="w-full bg-slate-50 border rounded-xl p-3 text-sm">
+                            <option value="t-money-togo">Yas / T-Money — Togo</option>
+                            <option value="moov-togo">Moov Money — Togo</option>
+                            <option value="orange-money-senegal">Orange Money — Sénégal</option>
+                            <option value="free-money-senegal">Yas / Free Money — Sénégal</option>
+                            <option value="expresso-senegal">Expresso — Sénégal</option>
+                            <option value="wave-senegal">Wave — Sénégal</option>
+                            <option value="wizall-senegal">Wizall — Sénégal</option>
+                            <option value="djamo-senegal">Djamo — Sénégal</option>
+                            <option value="orange-money-ci">Orange Money — Côte d’Ivoire</option>
+                            <option value="mtn-ci">MTN — Côte d’Ivoire</option>
+                            <option value="moov-ci">Moov — Côte d’Ivoire</option>
+                            <option value="wave-ci">Wave — Côte d’Ivoire</option>
+                            <option value="djamo-ci">Djamo — Côte d’Ivoire</option>
+                            <option value="moov-benin">Moov — Bénin</option>
+                            <option value="mtn-benin">MTN — Bénin</option>
+                            <option value="celtiis-benin">Celtiis Cash — Bénin</option>
+                            <option value="orange-money-burkina">Orange Money — Burkina Faso</option>
+                            <option value="moov-burkina">Moov — Burkina Faso</option>
+                            <option value="orange-money-mali">Orange Money — Mali</option>
+                            <option value="moov-mali">Moov — Mali</option>
+                            <option value="mtn-cameroun">MTN — Cameroun</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Numéro Mobile Money</label>
+                        <input type="text" id="payout-account" placeholder="Ex : 90 00 00 00" inputmode="numeric" class="w-full bg-slate-50 border rounded-xl p-3 text-sm">
+                        <p class="text-[11px] text-slate-500 mt-1">Le numéro doit appartenir à l'opérateur sélectionné. Minimum de retrait : 200 FCFA.</p>
                     </div>
                     <button onclick="requestPayout()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition">Soumettre la demande</button>
                 </div>

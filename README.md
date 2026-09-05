@@ -30,3 +30,17 @@ Les clés Tchin précédemment communiquées doivent être régénérées avant 
 - L'administrateur voit les demandes dans **Paiements & Retraits** et peut **Valider**, **Refuser** ou **Marquer payé**.
 - L'administrateur dispose aussi d'un espace **Mon retrait administrateur** basé sur les commissions Ticketora enregistrées.
 - La table `admin_payouts` est créée automatiquement au démarrage si elle n'existe pas.
+
+
+## Retraits organisateurs via Tchin
+
+Le retrait organisateur utilise le décaissement Tchin côté serveur :
+1. L’organisateur choisit le montant, l’opérateur et son numéro Mobile Money.
+2. L’admin valide la demande.
+3. L’admin clique sur « Payer via Tchin ».
+4. Ticketora appelle `/disburse/initiate`, puis `/disburse/submit`.
+5. Si Tchin répond `success`, le retrait passe automatiquement à `PAYE`.
+6. Si Tchin répond `pending`, Ticketora conserve le `disburse_token` et vérifie le statut sans renvoyer le paiement.
+7. Les frais Tchin sont enregistrés séparément (`tchin_fee`, `tchin_debited`).
+
+Les clés Tchin restent uniquement dans les variables d’environnement du serveur Render. Ne jamais mettre `.env` dans GitHub ou dans le ZIP de déploiement.
