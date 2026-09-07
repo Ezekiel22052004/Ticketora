@@ -7,142 +7,23 @@ function fmt(n){return Number(n||0).toLocaleString('fr-FR');}
 async function fetchPublicEvents(){try{const d=await api('/api/events');cachedEvents=d.events||[];renderPublicEvents();const eventId=new URLSearchParams(location.search).get('event');if(eventId){const ev=cachedEvents.find(x=>String(x.id)===String(eventId));if(ev&&!ev.sold_out)openBuyModal(ev.id);} }catch(e){console.error(e);const g=$('client-events-grid');if(g)g.innerHTML='<p class="text-sm text-rose-400">Impossible de charger les événements.</p>';}}
 function showSection(id){['client-home','client-events','client-verify'].forEach(x=>$(x)?.classList.add('hidden'));$(id)?.classList.remove('hidden');if(id==='client-events'){fetchPublicEvents();}if(id==='client-home'){renderPublicEvents();}}
 function renderPublicEvents(){
-    const grid = document.getElementById('all-events-grid') || document.getElementById('client-events-grid');
-    const upcoming = document.getElementById('upcoming-events-grid');
-    const empty = document.getElementById('upcoming-events-empty');
-
-    if (!grid && !upcoming) return;
-
-    const card = e => {
-        let cats = Array.isArray(e.ticket_categories) ? e.ticket_categories : [];
-        const price = cats.length
-            ? Math.min(...cats.map(c => Number(c.price || 0)))
-            : Number(e.price || 0);
-
-        const free = String(e.event_type || 'PAID') === 'FREE';
-        const sold = !!e.sold_out;
-        const share = encodeURIComponent(`${location.origin}${location.pathname}?event=${e.id}`);
-
-        return `
-        <article class="event-card-public bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col shadow-sm relative group">
-
-            ${e.image_url
-                ? `
-                <div class="relative overflow-hidden">
-                    <img src="${esc(e.image_url)}"
-                         alt="Affiche ${esc(e.title)}"
-                         class="w-full h-52 object-cover event-poster">
-
-                    ${sold
-                        ? '<span class="absolute top-4 left-4 bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-black tracking-wide shadow-lg">SOLD OUT</span>'
-                        : ''}
-                </div>
-                `
-                : `
-                <div class="relative w-full h-52 bg-gradient-to-br from-[#071a3b] to-[#102d5e] flex items-center justify-center">
-                    <img src="logo.png"
-                         alt="Ticketora"
-                         class="w-20 h-20 object-contain opacity-80">
-
-                    ${sold
-                        ? '<span class="absolute top-4 left-4 bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-black">SOLD OUT</span>'
-                        : ''}
-                </div>
-                `
-            }
-
-            <div class="p-5 flex flex-col flex-1">
-
-                <div class="flex items-center justify-between gap-3">
-                    <span class="text-[10px] font-black uppercase bg-orange-50 text-[#F97316] border border-orange-100 px-2.5 py-1 rounded-full">
-                        ${esc(e.category || 'Événement')}
-                    </span>
-
-                    <span class="text-xs text-slate-400 font-semibold">
-                        <i class="fa-regular fa-calendar mr-1"></i>
-                        ${esc(e.date || '')}
-                    </span>
-                </div>
-
-                <h3 class="text-xl font-black text-[#071a3b] mt-3">
-                    ${esc(e.title)}
-                </h3>
-
-                <p class="text-xs text-slate-500 font-semibold mt-2">
-                    <i class="fa-solid fa-location-dot text-[#F97316] mr-1"></i>
-                    ${esc(e.location || '')}
-                </p>
-
-                <p class="text-sm text-slate-500 line-clamp-2 mt-3 flex-1">
-                    ${esc(e.description || '')}
-                </p>
-
-                <div class="flex items-center justify-between gap-3 border-t border-slate-100 mt-5 pt-4">
-
-                    <div>
-                        <p class="text-[10px] uppercase font-black text-slate-400">
-                            ${free ? 'ENTRÉE' : 'À PARTIR DE'}
-                        </p>
-
-                        <p class="text-lg font-black text-[#071a3b]">
-                            ${free ? 'GRATUITE' : fmt(price) + ' FCFA'}
-                        </p>
-                    </div>
-
-                    <div class="flex gap-2">
-
-                        ${!sold
-                            ? `
-                            <button
-                                onclick="openBuyModal(${Number(e.id)})"
-                                class="bg-[#F97316] hover:bg-orange-600 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition">
-                                ${free ? 'Participer' : 'Acheter'}
-                            </button>
-                            `
-                            : ''
-                        }
-
-                        <button
-                            onclick="shareEvent(${Number(e.id)},'${share}')"
-                            class="w-10 h-10 border border-slate-200 rounded-xl text-slate-500 hover:text-[#F97316] transition"
-                            title="Partager">
-                            <i class="fa-solid fa-share-nodes"></i>
-                        </button>
-
-                    </div>
-                </div>
-            </div>
-        </article>`;
-    };
-
-    const events = Array.isArray(cachedEvents) ? cachedEvents : [];
-    const cards = events.map(card).join('');
-
-    if (grid) {
-        grid.innerHTML = cards ||
-            '<p class="text-slate-500 text-sm font-semibold">Aucun événement publié.</p>';
-    }
-
-    if (upcoming) {
-        const upcomingEvents = events.slice(0, 3);
-
-        upcoming.innerHTML = upcomingEvents.length
-            ? upcomingEvents.map(card).join('')
-            : '<p class="text-slate-500 text-sm font-semibold">Aucun événement à venir.</p>';
-
-        if (empty) {
-            empty.classList.toggle('hidden', upcomingEvents.length > 0);
-        }
-    }
+ const grid=document.getElementById('all-events-grid')||document.getElementById('client-events-grid');
+ const upcoming=document.getElementById('upcoming-events-grid');
+ const empty=document.getElementById('upcoming-events-empty');
+ if(!grid&&!upcoming)return;
+ const card=e=>{let cats=Array.isArray(e.ticket_categories)?e.ticket_categories:[];const price=cats.length?Math.min(...cats.map(c=>Number(c.price||0))):Number(e.price||0);const free=String(e.event_type||'PAID')==='FREE';const sold=!!e.sold_out;const share=encodeURIComponent(`${location.origin}${location.pathname}?event=${e.id}`);return `<article class="event-card-public bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col shadow-sm relative group">${e.image_url?`<div class="relative overflow-hidden"><img src="${esc(e.image_url)}" alt="Affiche ${esc(e.title)}" class="w-full h-52 object-cover event-poster">${sold?'<span class="absolute top-4 left-4 bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-black tracking-wide shadow-lg">SOLD OUT</span>':''}</div>`:`<div class="relative w-full h-52 bg-gradient-to-br from-[#071a3b] to-[#102d5e] flex items-center justify-center"><img src="logo.png" alt="Ticketora" class="w-20 h-20 object-contain opacity-80">${sold?'<span class="absolute top-4 left-4 bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-black">SOLD OUT</span>':''}</div>`}<div class="p-5 flex flex-col flex-1"><div class="flex items-center justify-between gap-3"><span class="text-[10px] font-black uppercase bg-orange-50 text-[#F97316] border border-orange-100 px-2.5 py-1 rounded-full">${esc(e.category||'Événement')}</span><span class="text-xs text-slate-400 font-semibold"><i class="fa-regular fa-calendar mr-1"></i>${esc(e.date||'')}</span></div><h3 class="text-xl font-black text-[#071a3b] mt-3">${esc(e.title)}</h3><p class="text-xs text-slate-500 font-semibold mt-2"><i class="fa-solid fa-location-dot text-[#F97316] mr-1"></i>${esc(e.location||'')}</p><p class="text-sm text-slate-500 line-clamp-2 mt-3 flex-1">${esc(e.description||'')}</p><div class="flex items-center justify-between gap-3 border-t border-slate-100 mt-5 pt-4"><div><p class="text-[10px] uppercase font-black text-slate-400">${free?'ENTRÉE':'À PARTIR DE'}</p><p class="text-lg font-black text-[#071a3b]">${free?'GRATUITE':fmt(price)+' FCFA'}</p></div><div class="flex gap-2">${!sold?`<button onclick="openBuyModal(${Number(e.id)})" class="bg-[#F97316] hover:bg-orange-600 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition">${free?'Participer':'Acheter'}</button>`:''}<button onclick="shareEvent(${Number(e.id)},'${share}')" class="w-10 h-10 border border-slate-200 rounded-xl text-slate-500 hover:text-[#F97316] transition" title="Partager"><i class="fa-solid fa-share-nodes"></i></button></div></div></div></article>`};
+ const cards=(cachedEvents||[]).map(card).join('');
+ if(grid)grid.innerHTML=cards||'<p class="text-slate-500 text-sm font-semibold">Aucun événement publié.</p>';
+ if(upcoming){const upcomingEvents=(cachedEvents||[]).slice(0,3);upcoming.innerHTML=upcomingEvents.map(card).join('');if(empty)empty.classList.toggle('hidden',upcomingEvents.length>0);}
 }
 
 function filterEvents(){const s=($('search-event')?.value||'').toLowerCase(),cat=$('filter-category')?.value||'ALL';document.querySelectorAll('#all-events-grid > article').forEach(card=>{const text=card.innerText.toLowerCase();const cm=cat==='ALL'||text.includes(cat.toLowerCase());card.classList.toggle('hidden',!(cm&&text.includes(s)));});}
 function openBuyModal(eventId){activeBuyingEvent=cachedEvents.find(e=>Number(e.id)===Number(eventId));if(!activeBuyingEvent)return;let cats=Array.isArray(activeBuyingEvent.ticket_categories)?activeBuyingEvent.ticket_categories:[];if(!cats.length)cats=[{name:'Standard',price:Number(activeBuyingEvent.price||0),total_stock:Number(activeBuyingEvent.capacity||0)}];activeBuyingCategory=cats[0];const sel=$('buy-ticket-type');sel.innerHTML=cats.map((c,i)=>`<option value="${esc(c.name)}">${esc(c.name)} — ${fmt(c.price)} FCFA</option>`).join('');sel.onchange=()=>{activeBuyingCategory=cats.find(c=>c.name===sel.value)||cats[0];appliedDiscount=0;appliedPromo=null;$('buy-promo').value='';if($('buy-promo-message'))$('buy-promo-message').innerText='';updateBuyPrice();};appliedDiscount=0;appliedPromo=null;$('buy-promo').value='';if($('buy-promo-message'))$('buy-promo-message').innerText='';updateBuyPrice();$('modal-event-title').innerText=activeBuyingEvent.title;$('buy-step-1').classList.remove('hidden');$('buy-step-2').classList.add('hidden');$('modal-buy-ticket').classList.remove('hidden');}
-function updateBuyPrice(){if(!activeBuyingCategory)return;const base=Number(activeBuyingCategory.price||0);const discount=appliedPromo?Number(appliedPromo.discount||0):Math.round(base*appliedDiscount);const total=base-discount;$('modal-event-price').innerHTML=`Prix initial : <b>${fmt(base)} FCFA</b>${discount?`<br><span class=\"text-emerald-400\">Réduction : -${fmt(discount)} FCFA</span>`:''}<br><span class=\"text-white font-black text-sm\">Total : ${fmt(total)} FCFA</span>`;}
+function updateBuyPrice(){if(!activeBuyingCategory)return;const base=Number(activeBuyingCategory.price||0);const discount=appliedPromo?Number(appliedPromo.discount||0):Math.round(base*appliedDiscount);const total=base-discount;const fee=Math.round(total*0.05),customerTotal=total+fee;$('modal-event-price').innerHTML=`Prix du ticket : <b>${fmt(base)} FCFA</b>${discount?`<br><span class=\"text-emerald-400\">Réduction : -${fmt(discount)} FCFA</span>`:''}<br><span class=\"text-slate-300 text-xs\">Frais de paiement (5 %) : +${fmt(fee)} FCFA</span><br><span class=\"text-white font-black text-sm\">Montant payé : ${fmt(customerTotal)} FCFA</span>`;}
 function closeBuyModal(){if(paymentPollTimer)clearInterval(paymentPollTimer);$('modal-buy-ticket').classList.add('hidden');}
 async function applyPromoCode(){const p=($('buy-promo')?.value||'').trim().toUpperCase(),email=($('buy-email')?.value||'').trim().toLowerCase();if(!p)return alert('Entrez un code promo.');if(!email)return alert('Entrez d’abord votre email pour vérifier les limites d’utilisation.');if(!activeBuyingEvent||!activeBuyingCategory)return;try{const d=await api('/api/promos/validate',{method:'POST',body:JSON.stringify({eventId:activeBuyingEvent.id,ticketType:activeBuyingCategory.name,email,code:p,baseAmount:Number(activeBuyingCategory.price||0)})});appliedPromo=d;appliedDiscount=0;updateBuyPrice();const box=$('buy-promo-message');if(box){box.className='text-xs mt-2 text-emerald-400 font-bold';box.innerText=`✓ ${d.code} appliqué : -${fmt(d.discount)} FCFA`;} }catch(e){appliedPromo=null;appliedDiscount=0;updateBuyPrice();const box=$('buy-promo-message');if(box){box.className='text-xs mt-2 text-rose-400 font-bold';box.innerText=e.message;}else alert(e.message);}}
 async function processPayment(){if(!activeBuyingEvent||!activeBuyingCategory)return;const name=$('buy-name').value.trim(),email=$('buy-email').value.trim(),promo=$('buy-promo').value.trim().toUpperCase();if(!name||!email)return alert('Veuillez remplir tous les champs.');try{const d=await api('/api/payments/create',{method:'POST',body:JSON.stringify({eventId:activeBuyingEvent.id,name,email,ticketType:activeBuyingCategory.name,promo})});if(d.free&&d.ticket){$('modal-buy-ticket')?.classList.remove('hidden');$('buy-step-1')?.classList.add('hidden');$('buy-step-2')?.classList.remove('hidden');renderTicket(d.ticket,true);return;}if(d.payment_url)window.location.href=d.payment_url;else throw new Error('Lien de paiement indisponible.');}catch(e){alert(e.message);}}
-function setupPaymentReturn(){const q=new URLSearchParams(location.search);const token=q.get('token');const mode=q.get('payment');if(!token||mode!=='return')return;showSection('client-events');$('modal-buy-ticket').classList.remove('hidden');$('buy-step-1').classList.add('hidden');$('buy-step-2').classList.add('hidden');const box=$('buy-step-2');box.classList.remove('hidden');box.innerHTML='<div class="bg-slate-900/50 rounded-2xl p-8 text-center space-y-4"><div class="text-4xl">⏳</div><h3 class="text-xl font-bold text-white">Confirmation du paiement…</h3><p class="text-sm text-slate-400">Ticketora vérifie la confirmation réelle du paiement.</p></div>';let tries=0;paymentPollTimer=setInterval(async()=>{tries++;try{const d=await api(`/api/payments/${encodeURIComponent(token)}/status`);if(d.paid&&d.ticket){clearInterval(paymentPollTimer);renderTicket(d.ticket);return;}if(['cancelled','failed'].includes(d.status)||tries>=20){clearInterval(paymentPollTimer);box.innerHTML='<div class="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-6 text-center"><p class="text-rose-400 font-bold">Paiement non confirmé.</p><button onclick="closeBuyModal()" class="mt-4 bg-slate-700 text-white px-4 py-2 rounded-xl">Fermer</button></div>';}}catch(e){if(tries>=20){clearInterval(paymentPollTimer);box.innerHTML='<div class="p-6 text-center text-rose-400">Vérification impossible pour le moment. Réessayez dans quelques instants.</div>';}}},4000);}
+function setupPaymentReturn(){const q=new URLSearchParams(location.search);const token=q.get('token');const reference=q.get('reference');const mode=q.get('payment');if((!token&&!reference)||mode!=='return')return;showSection('client-events');$('modal-buy-ticket').classList.remove('hidden');$('buy-step-1').classList.add('hidden');$('buy-step-2').classList.add('hidden');const box=$('buy-step-2');box.classList.remove('hidden');box.innerHTML='<div class="bg-slate-900/50 rounded-2xl p-8 text-center space-y-4"><div class="text-4xl">⏳</div><h3 class="text-xl font-bold text-white">Confirmation du paiement…</h3><p class="text-sm text-slate-400">Ticketora vérifie la confirmation réelle du paiement.</p></div>';let tries=0;paymentPollTimer=setInterval(async()=>{tries++;try{const endpoint=token?`/api/payments/${encodeURIComponent(token)}/status`:`/api/payments/reference/${encodeURIComponent(reference)}/status`;const d=await api(endpoint);if(d.paid&&d.ticket){clearInterval(paymentPollTimer);renderTicket(d.ticket);return;}if(['cancelled','failed'].includes(d.status)||tries>=20){clearInterval(paymentPollTimer);box.innerHTML='<div class="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-6 text-center"><p class="text-rose-400 font-bold">Paiement non confirmé.</p><button onclick="closeBuyModal()" class="mt-4 bg-slate-700 text-white px-4 py-2 rounded-xl">Fermer</button></div>';}}catch(e){if(tries>=20){clearInterval(paymentPollTimer);box.innerHTML='<div class="p-6 text-center text-rose-400">Vérification impossible pour le moment. Réessayez dans quelques instants.</div>';}}},4000);}
 function renderTicket(t){$('buy-step-2').innerHTML=`<div class="space-y-4 text-center"><div id="ticket-pdf-area" class="relative overflow-hidden mx-auto bg-white" style="width:1200px;height:560px;max-width:100%;aspect-ratio:1200/560;"><img src="ticket-template.jpeg" class="absolute inset-0 w-full h-full object-cover"><div class="absolute left-[17%] top-[29%] w-[50%] text-left"><div id="ticket-event-display" class="font-black text-[26px] text-[#0F172A] leading-tight">${esc(t.event_title)}</div></div><div class="absolute left-[17%] top-[43%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]">${esc(t.event_date)}</div><div class="absolute left-[17%] top-[54%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]">${esc(t.event_location)}</div><div class="absolute left-[17%] top-[65%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]">${esc(t.ticket_type)}</div><div class="absolute left-[17%] top-[76%] w-[50%] text-left font-bold text-[18px] text-[#0F172A]">${esc(t.customer_name)}</div><div class="absolute right-[5.5%] top-[28%] w-[16%] flex flex-col items-center gap-2"><div id="qrcode" class="bg-white p-2 rounded-lg"></div><div id="ticket-code-display" class="font-mono text-[13px] font-black text-[#0F172A] bg-white/90 px-2 py-1 rounded">${esc(t.code)}</div></div></div><p class="text-xs text-slate-400">Paiement confirmé. Votre billet est unique.</p><button onclick="downloadPDF()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2"><i class="fa-solid fa-download"></i> Télécharger mon billet (PDF)</button></div>`;new QRCode($('qrcode'),{text:t.code,width:120,height:120});}
 function downloadPDF(){const el=$('ticket-pdf-area');if(!el)return;html2pdf().set({margin:0,filename:`Billet_${$('ticket-code-display')?.innerText||'Ticketora'}.pdf`,image:{type:'jpeg',quality:.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff'},jsPDF:{unit:'px',format:[1200,560],orientation:'landscape'}}).from(el).save();}
 async function verifyTicketPublic(){const code=($('public-scan-input')?.value||'').trim().toUpperCase(),r=$('public-scan-result');if(!code){r.innerHTML='<div class="p-3 bg-amber-500/10 text-amber-400 rounded-xl text-xs font-bold">Saisissez un code.</div>';return;}try{const d=await api(`/api/tickets/verify/${encodeURIComponent(code)}`);r.innerHTML=`<div class="p-4 rounded-xl ${d.status==='VALID'?'bg-emerald-500/10 text-emerald-400':'bg-amber-500/10 text-amber-400'} text-xs font-bold">${esc(d.message)}<br><span class="font-normal">${esc(d.ticket?.event_title||'')}</span></div>`;}catch(e){r.innerHTML='<div class="p-4 bg-red-500/10 text-red-400 rounded-xl text-xs font-bold">BILLET NON VALIDE</div>';}}
@@ -246,11 +127,7 @@ function initV3Animations(){const obs=new IntersectionObserver(es=>es.forEach(e=
 async function participantAuth(mode){const email=document.getElementById('participant-email')?.value.trim(),password=document.getElementById('participant-password')?.value||'',name=document.getElementById('participant-name')?.value.trim();try{const d=await api(mode==='register'?'/api/participants/register':'/api/participants/login',{method:'POST',body:JSON.stringify(mode==='register'?{name,email,password}:{email,password})});if(d.success){closeParticipantModal();showParticipantHistory();}}catch(e){alert(e.message)}}
 async function showParticipantHistory(){try{const d=await api('/api/participants/history');const t=(d.tickets||[]).map(x=>`<div class="bg-white border rounded-2xl p-4"><div class="flex justify-between gap-3"><b>${esc(x.event_title)}</b><span class="text-xs font-bold ${x.used?'text-slate-400':'text-emerald-600'}">${x.used?'VALIDÉ':'VALIDE'}</span></div><p class="text-sm text-slate-500 mt-1">${esc(x.ticket_type)} · ${esc(x.code)}</p><button onclick="window.open(API+'/api/tickets/'+encodeURIComponent('${x.code}')+'/qr','_blank')" class="mt-3 text-xs font-bold text-[#F97316]">QR Code</button></div>`).join('');let box=document.getElementById('participant-history-box');if(!box){box=document.createElement('div');box.id='participant-history-box';box.className='fixed inset-0 z-[90] bg-black/70 backdrop-blur-sm p-4 overflow-auto';document.body.appendChild(box);}box.innerHTML=`<div class="max-w-2xl mx-auto mt-10 bg-slate-50 rounded-3xl p-6"><div class="flex justify-between items-center"><h2 class="text-2xl font-black text-[#071a3b]">Mon historique</h2><button onclick="this.closest('#participant-history-box').remove()" class="text-slate-400 text-xl">×</button></div><div class="space-y-3 mt-5">${t||'<p class="text-slate-500">Aucun billet associé à ce compte.</p>'}</div></div>`;}catch(e){alert(e.message)}}
 function downloadCSV(path){window.open(API+path,'_blank');}
-document.addEventListener('DOMContentLoaded',()=>{
-    fetchPublicEvents();
-    loadPartners();
-    initV3Animations();
-});
+document.addEventListener('DOMContentLoaded',()=>{loadPartners();initV3Animations();});
 
 function toggleFreeEventMode(){const free=$('event-type')?.value==='FREE';$('free-event-note')?.classList.toggle('hidden',!free);$('ticket-categories-container')?.closest('div.space-y-4')?.classList.toggle('opacity-60',free);if(free&&!document.querySelector('#ticket-categories-container > div'))addTicketCategoryRow({name:'Entrée gratuite',price:0,total_stock:0});}
 
