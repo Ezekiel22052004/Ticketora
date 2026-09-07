@@ -74,9 +74,15 @@ function logAction(client,actorType,actorId,action,entityType,entityId,metadata=
 
 async function ensureEventImageColumn(){
   if(!process.env.DATABASE_URL) return;
-  await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS image_url TEXT`);
-}
 
+  await pool.query(
+    `ALTER TABLE events ADD COLUMN IF NOT EXISTS image_url TEXT`
+  );
+
+  await pool.query(
+    `ALTER TABLE events ADD COLUMN IF NOT EXISTS event_type VARCHAR(10) NOT NULL DEFAULT 'PAID'`
+  );
+}
 async function ensurePromoTables(){
   if(!process.env.DATABASE_URL) return;
   await pool.query(`CREATE TABLE IF NOT EXISTS promo_codes (
@@ -161,6 +167,57 @@ async function ensureAdminPayoutTable(){
 
 app.get('/api/health',(req,res)=>res.json({success:true,service:'ticketora',time:new Date().toISOString()}));
 
+
+async function ensureV3Tables(){
+  if(!process.env.DATABASE_URL) return;
+  await pool.query(`CREATE TABLE IF NOT EXISTS participant_users (
+    id BIGSERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL, phone VARCHAR(60) DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES participant_users(id) ON DELETE SET NULL`);
+  await pool.query(`ALTER TABLE contributions ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES participant_users(id) ON DELETE SET NULL`);
+  await pool.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS issued_by_admin BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_contributions_user ON contributions(user_id)');
+  await pool.query(`CREATE TABLE IF NOT EXISTS event_partners (id BIGSERIAL PRIMARY KEY,name VARCHAR(120) NOT NULL,logo_url TEXT NOT NULL,active BOOLEAN NOT NULL DEFAULT TRUE,sort_order INTEGER NOT NULL DEFAULT 0)`);
+  // Partenaire de base : Tchin. Le logo est servi depuis le frontend.
+  await pool.query(`INSERT INTO event_partners(name,logo_url,active,sort_order)
+    SELECT 'Tchin','tchin-logo.jpeg',TRUE,0
+    WHERE NOT EXISTS (SELECT 1 FROM event_partners WHERE LOWER(name)='tchin')`);
+}
+function requireParticipant(req,res,next){if(req.session?.user?.role!=='PARTICIPANT')return res.status(401).json({success:false,message:'Connexion participant requise.'});next();}
+
+
+// ---------- COMPTES PARTICIPANTS V3 ----------
+app.post('/api/participants/register',asyncRoute(async(req,res)=>{
+  const name=clean(req.body.name,255),email=clean(req.body.email,255).toLowerCase(),password=String(req.body.password||''),phone=clean(req.body.phone,60);
+  if(!name||!email||!password||password.length<8)return res.status(400).json({success:false,message:'Nom, email et mot de passe (8 caractères minimum) sont obligatoires.'});
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({success:false,message:'Adresse email invalide.'});
+  const hash=await bcrypt.hash(password,12);
+  try{const r=await pool.query('INSERT INTO participant_users(name,email,password_hash,phone) VALUES($1,$2,$3,$4) RETURNING id,name,email,phone',[name,email,hash,phone]);req.session.user={role:'PARTICIPANT',id:r.rows[0].id,email};res.status(201).json({success:true,user:r.rows[0]});}
+  catch(e){if(e.code==='23505')return res.status(409).json({success:false,message:'Un compte existe déjà avec cet email.'});throw e;}
+}));
+app.post('/api/participants/login',asyncRoute(async(req,res)=>{
+ const email=clean(req.body.email,255).toLowerCase(),password=String(req.body.password||'');const r=await pool.query('SELECT id,name,email,phone,password_hash FROM participant_users WHERE email=$1',[email]);
+ if(!r.rows.length||!(await bcrypt.compare(password,r.rows[0].password_hash)))return res.status(401).json({success:false,message:'Identifiants incorrects.'});
+ req.session.user={role:'PARTICIPANT',id:r.rows[0].id,email:r.rows[0].email};const u=r.rows[0];delete u.password_hash;
+ await pool.query('UPDATE orders SET user_id=$1 WHERE user_id IS NULL AND LOWER(customer_email)=LOWER($2)',[u.id,u.email]);
+ await pool.query('UPDATE contributions SET user_id=$1 WHERE user_id IS NULL AND LOWER(contributor_email)=LOWER($2)',[u.id,u.email]);
+ res.json({success:true,user:u});
+}));
+app.post('/api/participants/logout',(req,res)=>req.session.destroy(()=>res.json({success:true})));
+app.get('/api/participants/me',requireParticipant,asyncRoute(async(req,res)=>{const r=await pool.query('SELECT id,name,email,phone,created_at FROM participant_users WHERE id=$1',[req.session.user.id]);if(!r.rows.length)return res.status(401).json({success:false});res.json({success:true,user:r.rows[0]});}));
+app.get('/api/participants/history',requireParticipant,asyncRoute(async(req,res)=>{
+ const id=req.session.user.id;
+ const [t,c,o]=await Promise.all([
+   pool.query('SELECT * FROM tickets WHERE order_id IN (SELECT id FROM orders WHERE user_id=$1) OR LOWER(customer_email)=(SELECT LOWER(email) FROM participant_users WHERE id=$1) ORDER BY id DESC',[id]),
+   pool.query('SELECT c.*,g.title FROM contributions c JOIN cagnottes g ON g.id=c.cagnotte_id WHERE c.user_id=$1 OR LOWER(c.contributor_email)=(SELECT LOWER(email) FROM participant_users WHERE id=$1) ORDER BY c.id DESC',[id]),
+   pool.query('SELECT id,reference,event_id,ticket_type,customer_name,total_amount,status,created_at,paid_at FROM orders WHERE user_id=$1 OR LOWER(customer_email)=(SELECT LOWER(email) FROM participant_users WHERE id=$1) ORDER BY id DESC',[id])
+ ]);
+ res.json({success:true,tickets:t.rows,contributions:c.rows,orders:o.rows});
+}));
+
 // ---------- AUTH ORGANISATEUR ----------
 app.post('/api/organizers/request',asyncRoute(async(req,res)=>{
   const nom=clean(req.body.nom,180),prenom=clean(req.body.prenom,180),email=clean(req.body.email,255).toLowerCase(),phone=clean(req.body.phone,60),password=String(req.body.password||'');
@@ -188,13 +245,21 @@ app.post('/api/organizers/password',requireOrg,asyncRoute(async(req,res)=>{const
 
 // ---------- EVENEMENTS ----------
 function normalizeCats(cats){if(!Array.isArray(cats))return [];return cats.map((c,i)=>({id:clean(c.id||('CAT-'+crypto.randomBytes(3).toString('hex').toUpperCase()),60),name:clean(c.name||'Standard',120),price:positiveInt(c.price)||0,total_stock:positiveInt(c.total_stock)||0})).filter(c=>c.name);}
-app.get('/api/events',asyncRoute(async(req,res)=>{const r=await pool.query(`SELECT e.*,COALESCE((SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id),0)::int sold_count FROM events e WHERE e.status='PUBLIE' ORDER BY e.date ASC,e.id DESC`);res.json({success:true,events:r.rows});}));
+app.get('/api/events',asyncRoute(async(req,res)=>{const r=await pool.query(`SELECT e.*,
+COALESCE((SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id),0)::int sold_count,
+CASE WHEN e.capacity>0 AND COALESCE((SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id),0)>=e.capacity
+THEN true
+WHEN jsonb_typeof(e.ticket_categories)='array' AND jsonb_array_length(e.ticket_categories)>0
+AND COALESCE((SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id),0)>=
+COALESCE((SELECT SUM((x->>'total_stock')::int) FROM jsonb_array_elements(e.ticket_categories) x),0)
+THEN true ELSE false END AS sold_out
+FROM events e WHERE e.status='PUBLIE' AND e.date>=CURRENT_DATE ORDER BY e.date ASC,e.id DESC`);res.json({success:true,events:r.rows});}));
 app.get('/api/organizers/events',requireOrg,asyncRoute(async(req,res)=>{const r=await pool.query('SELECT e.*,COALESCE((SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id),0)::int sold_count FROM events e WHERE e.org_id=$1 ORDER BY e.id DESC',[req.session.user.id]);res.json({success:true,events:r.rows});}));
 app.post('/api/organizers/events',requireOrg,asyncRoute(async(req,res)=>{
-  const {title,category,date,location,description,price,capacity,ticketCategories,imageUrl}=req.body;const p=positiveInt(price),cap=positiveInt(capacity),cats=normalizeCats(ticketCategories);if(!clean(title)||!date||!clean(location)||p===null||cap===null||!cats.length)return res.status(400).json({success:false,message:'Informations événement/catégories incomplètes.'});
-  const primary=cats[0]?.price??p;const image=clean(imageUrl,1800000);if(image && !/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(image))return res.status(400).json({success:false,message:'Affiche invalide.'});const r=await pool.query(`INSERT INTO events(org_id,title,category,date,location,description,price,capacity,status,ticket_categories,image_url) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'EN_ATTENTE',$9::jsonb,$10) RETURNING *`,[req.session.user.id,clean(title),clean(category||'Concert',100),date,clean(location),clean(description,3000),primary,cap,JSON.stringify(cats),image||null]);res.status(201).json({success:true,event:r.rows[0],message:'Événement enregistré. Il attend la validation administrateur.'});
+  const {title,category,date,location,description,price,capacity,ticketCategories,imageUrl,eventType}=req.body;const type=String(eventType||'PAID').toUpperCase()==='FREE'?'FREE':'PAID';const p=positiveInt(price),cap=positiveInt(capacity),cats=normalizeCats(ticketCategories);if(!clean(title)||!date||!clean(location)||p===null||cap===null||(type==='PAID'&&!cats.length)||(type==='FREE'&&cap===0))return res.status(400).json({success:false,message:'Informations événement/catégories incomplètes.'});
+  const primary=cats[0]?.price??p;const image=clean(imageUrl,1800000);if(image && !/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(image))return res.status(400).json({success:false,message:'Affiche invalide.'});const r=await pool.query(`INSERT INTO events(org_id,title,category,date,location,description,price,capacity,status,ticket_categories,image_url,event_type) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'EN_ATTENTE',$9::jsonb,$10,$11) RETURNING *`,[req.session.user.id,clean(title),clean(category||'Concert',100),date,clean(location),clean(description,3000),primary,cap,JSON.stringify(cats),image||null,type]);res.status(201).json({success:true,event:r.rows[0],message:'Événement enregistré. Il attend la validation administrateur.'});
 }));
-app.put('/api/organizers/events/:id',requireOrg,asyncRoute(async(req,res)=>{const {title,category,date,location,description,price,capacity,ticketCategories}=req.body;const p=positiveInt(price),cap=positiveInt(capacity),cats=normalizeCats(ticketCategories);if(p===null||cap===null||!cats.length)return res.status(400).json({success:false,message:'Données invalides.'});const r=await pool.query(`UPDATE events SET title=$1,category=$2,date=$3,location=$4,description=$5,price=$6,capacity=$7,ticket_categories=$8::jsonb,image_url=$9,updated_at=NOW(),status=CASE WHEN status='PUBLIE' THEN 'EN_ATTENTE' ELSE status END WHERE id=$10 AND org_id=$11 RETURNING *`,[clean(title),clean(category||'Concert',100),date,clean(location),clean(description,3000),p,cap,JSON.stringify(cats),clean(req.body.imageUrl,1800000)||null,req.params.id,req.session.user.id]);if(!r.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});res.json({success:true,event:r.rows[0]});}));
+app.put('/api/organizers/events/:id',requireOrg,asyncRoute(async(req,res)=>{const {title,category,date,location,description,price,capacity,ticketCategories,eventType}=req.body;const type=String(eventType||'PAID').toUpperCase()==='FREE'?'FREE':'PAID';const p=positiveInt(price),cap=positiveInt(capacity),cats=normalizeCats(ticketCategories);if(p===null||cap===null||(type==='PAID'&&!cats.length)||(type==='FREE'&&cap===0))return res.status(400).json({success:false,message:'Données invalides.'});const r=await pool.query(`UPDATE events SET title=$1,category=$2,date=$3,location=$4,description=$5,price=$6,capacity=$7,ticket_categories=$8::jsonb,image_url=$9,event_type=$10,updated_at=NOW(),status=CASE WHEN status='PUBLIE' THEN 'EN_ATTENTE' ELSE status END WHERE id=$11 AND org_id=$12 RETURNING *`,[clean(title),clean(category||'Concert',100),date,clean(location),clean(description,3000),p,cap,JSON.stringify(cats),clean(req.body.imageUrl,1800000)||null,type,req.params.id,req.session.user.id]);if(!r.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});res.json({success:true,event:r.rows[0]});}));
 
 // ---------- ADMIN ----------
 app.post('/api/admin/login',asyncRoute(async(req,res)=>{const email=clean(req.body.email,255).toLowerCase(),password=String(req.body.password||'');const expected=clean(process.env.ADMIN_EMAIL||'ticketora2026@gmail.com',255).toLowerCase();if(email!==expected||!process.env.ADMIN_PASSWORD||password!==process.env.ADMIN_PASSWORD)return res.status(401).json({success:false,message:'Identifiants administrateur incorrects.'});req.session.user={role:'ADMIN',email};res.json({success:true});}));
@@ -257,7 +322,17 @@ app.get('/api/organizers/promos/:id/usage',requireOrg,asyncRoute(async(req,res)=
 
 app.post('/api/payments/create',asyncRoute(async(req,res)=>{
   const eventId=Number(req.body.eventId),name=clean(req.body.name,255),email=clean(req.body.email,255).toLowerCase(),ticketType=clean(req.body.ticketType,120),promo=normalizePromoCode(req.body.promo);if(!Number.isInteger(eventId)||!name||!email||!ticketType)return res.status(400).json({success:false,message:'Informations d’achat incomplètes.'});
-  const c=await pool.connect();try{await c.query('BEGIN');const er=await c.query("SELECT * FROM events WHERE id=$1 AND status='PUBLIE' FOR UPDATE",[eventId]);if(!er.rows.length)throw new Error('Événement indisponible.');const ev=er.rows[0];let cats=Array.isArray(ev.ticket_categories)?ev.ticket_categories:[];if(typeof ev.ticket_categories==='string')cats=JSON.parse(ev.ticket_categories);const cat=cats.find(x=>String(x.name).toLowerCase()===ticketType.toLowerCase());if(!cat)throw new Error('Type de billet indisponible.');const baseAmount=Number(cat.price||0);let discount=0,total=baseAmount,promoRow=null;if(promo){const x=await getValidPromo(c,{orgId:ev.org_id,eventId,ticketType,customerEmail:email,baseAmount,code:promo,lock:true});discount=x.discount;total=x.total;promoRow=x.promo;}if(total<100)throw new Error('Montant du billet trop faible pour le paiement.');const sold=await c.query('SELECT COUNT(*)::int n FROM tickets WHERE event_id=$1',[eventId]);if(Number(ev.capacity)>0&&sold.rows[0].n>=Number(ev.capacity))throw new Error('Événement complet.');const ref=fmtRef();const ord=await c.query('INSERT INTO orders(reference,event_id,ticket_type,customer_name,customer_email,base_amount,discount_amount,total_amount,promo_code) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',[ref,eventId,ticketType,name,email,baseAmount,discount,total,promo]);if(promoRow){await c.query('INSERT INTO promo_usages(promo_id,order_id,customer_email,discount_amount) VALUES($1,$2,$3,$4)',[promoRow.id,ord.rows[0].id,email,discount]);}await c.query('COMMIT');
+  const c=await pool.connect();try{await c.query('BEGIN');const er=await c.query("SELECT * FROM events WHERE id=$1 AND status='PUBLIE' FOR UPDATE",[eventId]);if(!er.rows.length)throw new Error('Événement indisponible.');const ev=er.rows[0];let cats=Array.isArray(ev.ticket_categories)?ev.ticket_categories:[];if(typeof ev.ticket_categories==='string')cats=JSON.parse(ev.ticket_categories);const cat=cats.find(x=>String(x.name).toLowerCase()===ticketType.toLowerCase());if(!cat)throw new Error('Type de billet indisponible.');const baseAmount=Number(cat.price||0);
+    if(String(ev.event_type||'PAID')==='FREE'){
+      const sold=await c.query('SELECT COUNT(*)::int n FROM tickets WHERE event_id=$1',[eventId]);
+      if(Number(ev.capacity)>0&&sold.rows[0].n>=Number(ev.capacity))throw new Error('Événement complet.');
+      const ref=fmtRef(); const ord=await c.query(`INSERT INTO orders(reference,event_id,ticket_type,customer_name,customer_email,base_amount,discount_amount,total_amount,status,user_id) VALUES($1,$2,$3,$4,$5,0,0,0,'PAID',$6) RETURNING id`,[ref,eventId,ticketType,name,email,req.session?.user?.role==='PARTICIPANT'?req.session.user.id:null]);
+      let code=null; for(let i=0;i<8;i++){const candidate=fmtTicket();const ex=await c.query('SELECT 1 FROM tickets WHERE code=$1',[candidate]);if(!ex.rows.length){code=candidate;break;}}
+      if(!code)throw new Error('Impossible de générer le billet.');
+      const tr=await c.query(`INSERT INTO tickets(order_id,code,event_id,org_id,event_title,event_date,event_location,ticket_type,customer_name,customer_email,total_amount,admin_commission,organizer_amount,commission_rate) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,0,0,0) RETURNING *`,[ord.rows[0].id,code,eventId,ev.org_id,ev.title,ev.date,ev.location,ticketType,name,email]);
+      await c.query('COMMIT'); return res.json({success:true,free:true,reference:ref,ticket:tr.rows[0],message:'Inscription gratuite confirmée.'});
+    }
+    let discount=0,total=baseAmount,promoRow=null;if(promo){const x=await getValidPromo(c,{orgId:ev.org_id,eventId,ticketType,customerEmail:email,baseAmount,code:promo,lock:true});discount=x.discount;total=x.total;promoRow=x.promo;}if(total<100)throw new Error('Montant du billet trop faible pour le paiement.');const sold=await c.query('SELECT COUNT(*)::int n FROM tickets WHERE event_id=$1',[eventId]);if(Number(ev.capacity)>0&&sold.rows[0].n>=Number(ev.capacity))throw new Error('Événement complet.');const ref=fmtRef();const ord=await c.query('INSERT INTO orders(reference,event_id,ticket_type,customer_name,customer_email,base_amount,discount_amount,total_amount,promo_code) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',[ref,eventId,ticketType,name,email,baseAmount,discount,total,promo]);if(promoRow){await c.query('INSERT INTO promo_usages(promo_id,order_id,customer_email,discount_amount) VALUES($1,$2,$3,$4)',[promoRow.id,ord.rows[0].id,email,discount]);}await c.query('COMMIT');
     const returnUrl=process.env.TCHIN_RETURN_URL||`${FRONTEND_URL}/?payment=return`;const cancelUrl=process.env.TCHIN_CANCEL_URL||`${FRONTEND_URL}/?payment=cancel`;const callback=process.env.TCHIN_CALLBACK_URL||`${req.protocol}://${req.get('host')}/api/webhooks/tchin`;
     try{const td=await tchinRequest('/payments',{method:'POST',body:JSON.stringify({amount:total,description:`Ticketora ${ref} - ${ev.title}`,env:process.env.TCHIN_ENV||'test',return_url:returnUrl,cancel_url:cancelUrl,callback_url:callback,fees_on_customer:false})});await pool.query('UPDATE orders SET tchin_token=$1,tchin_status=\'pending\' WHERE reference=$2',[td.token,ref]);res.json({success:true,reference:ref,token:td.token,payment_url:td.payment_url,amount:total,baseAmount,discount,promoCode:promo||null});}catch(e){await pool.query("UPDATE promo_usages SET status='CANCELLED' WHERE order_id=(SELECT id FROM orders WHERE reference=$1)",[ref]);await pool.query("UPDATE orders SET status='FAILED' WHERE reference=$1",[ref]);throw e;}
   }catch(e){try{await c.query('ROLLBACK')}catch{};res.status(400).json({success:false,message:e.message});}finally{c.release();}
@@ -548,6 +623,8 @@ app.post('/api/scanners/login',asyncRoute(async(req,res)=>{
 app.post('/api/scanners/logout',(req,res)=>req.session.destroy(()=>res.json({success:true})));
 function requireScanner(req,res,next){if(req.session?.user?.role!=='SCANNER')return res.status(401).json({success:false,message:'Connexion scanner requise.'});next();}
 app.get('/api/scanners/me',requireScanner,asyncRoute(async(req,res)=>{await ensureScannerTable();const r=await pool.query('SELECT id,agent_number,name,active,org_id FROM scanner_agents WHERE id=$1',[req.session.user.id]);if(!r.rows.length||!r.rows[0].active)return res.status(401).json({success:false,message:'Scanner inactif.'});res.json({success:true,scanner:r.rows[0]});}));
+app.get('/api/scanners/events',requireScanner,asyncRoute(async(req,res)=>{const r=await pool.query('SELECT id,title,date FROM events WHERE org_id=$1 ORDER BY date DESC',[req.session.user.orgId]);res.json({success:true,events:r.rows});}));
+app.get('/api/scanners/validated',requireScanner,asyncRoute(async(req,res)=>{const eventId=Number(req.query.eventId);if(!eventId)return res.status(400).json({success:false,message:'Événement requis.'});const r=await pool.query(`SELECT t.code AS ticket_id,t.customer_name,t.ticket_type,t.used_at,t.used,t.event_title FROM tickets t WHERE t.org_id=$1 AND t.event_id=$2 AND t.used=true ORDER BY t.used_at DESC`,[req.session.user.orgId,eventId]);res.json({success:true,tickets:r.rows});}));
 app.post('/api/scanners/scan',requireScanner,asyncRoute(async(req,res)=>{const code=clean(req.body.code,32).toUpperCase();if(!code)return res.status(400).json({success:false,message:'Code billet requis.'});const x=await scanTicket(code,req.session.user.orgId);res.status(x.http).json(x.data);}));
 app.get('/api/chat/conversations',requireAdmin,asyncRoute(async(req,res)=>{
   await ensureChatTable();
@@ -633,13 +710,72 @@ app.post('/api/admin/cagnottes/:id/launch',requireAdmin,asyncRoute(async(req,res
 app.post('/api/admin/cagnottes/:id/stop',requireAdmin,asyncRoute(async(req,res)=>{await ensureCagnotteTables();const r=await pool.query("UPDATE cagnottes SET status='TERMINE',updated_at=NOW() WHERE id=$1 RETURNING *",[req.params.id]);if(!r.rows.length)return res.status(404).json({success:false,message:'Cagnotte introuvable.'});res.json({success:true,cagnotte:r.rows[0]});}));
 app.delete('/api/admin/cagnottes/:id',requireAdmin,asyncRoute(async(req,res)=>{await ensureCagnotteTables();const r=await pool.query("DELETE FROM cagnottes WHERE id=$1 AND status<>'PUBLIE' RETURNING id",[req.params.id]);if(!r.rows.length)return res.status(400).json({success:false,message:'Une cagnotte publiée ne peut pas être supprimée.'});res.json({success:true});}));
 app.get('/api/admin/cagnottes/:id/contributions',requireAdmin,asyncRoute(async(req,res)=>{await ensureCagnotteTables();const r=await pool.query('SELECT * FROM contributions WHERE cagnotte_id=$1 ORDER BY id DESC',[req.params.id]);res.json({success:true,contributions:r.rows});}));
-app.post('/api/cagnottes/:id/contribute',asyncRoute(async(req,res)=>{await ensureCagnotteTables();const id=Number(req.params.id),name=clean(req.body.name,255),email=clean(req.body.email,255).toLowerCase(),amount=positiveInt(req.body.amount);if(!id||!amount||amount<100)return res.status(400).json({success:false,message:'Choisissez un montant d’au moins 100 FCFA.'});const c=await pool.connect();try{await c.query('BEGIN');const cg=await c.query("SELECT * FROM cagnottes WHERE id=$1 AND status='PUBLIE' FOR UPDATE",[id]);if(!cg.rows.length)throw new Error('Cagnotte indisponible.');const ref='CAG-'+crypto.randomBytes(5).toString('hex').toUpperCase();await c.query('INSERT INTO contributions(cagnotte_id,contributor_name,contributor_email,amount,reference) VALUES($1,$2,$3,$4,$5)',[id,name||'Anonyme',email||null,amount,ref]);await c.query('COMMIT');const returnUrl=process.env.TCHIN_RETURN_URL||`${FRONTEND_URL}/?cagnotte=return`;const cancelUrl=process.env.TCHIN_CANCEL_URL||`${FRONTEND_URL}/?cagnotte=cancel`;const callback=process.env.TCHIN_CALLBACK_URL||`${req.protocol}://${req.get('host')}/api/webhooks/tchin`;const td=await tchinRequest('/payments',{method:'POST',body:JSON.stringify({amount,description:`Ticketora Cagnotte ${ref} - ${cg.rows[0].title}`,env:process.env.TCHIN_ENV||'test',return_url:returnUrl,cancel_url:cancelUrl,callback_url:callback,fees_on_customer:false})});await pool.query('UPDATE contributions SET tchin_token=$1,tchin_status=\'pending\',tchin_mode=$2 WHERE reference=$3',[td.token,process.env.TCHIN_ENV||'test',ref]);res.json({success:true,reference:ref,token:td.token,payment_url:td.payment_url,amount});}catch(e){try{await c.query('ROLLBACK')}catch{};res.status(400).json({success:false,message:e.message});}finally{c.release();}}));
-app.get('/api/cagnottes/contributions/:token/status',asyncRoute(async(req,res)=>{await ensureCagnotteTables();const token=clean(req.params.token,255);const r=await pool.query('SELECT c.*,g.title FROM contributions c JOIN cagnottes g ON g.id=c.cagnotte_id WHERE c.tchin_token=$1',[token]);if(!r.rows.length)return res.status(404).json({success:false,message:'Contribution introuvable.'});const c=r.rows[0];const td=await tchinRequest(`/payments/${encodeURIComponent(token)}/status`,{method:'GET'});const status=td.status||td.data?.status||c.tchin_status||'pending';if(status==='completed'&&c.status!=='PAYE'&&String(process.env.TCHIN_ENV||'test')!=='test'){await pool.query("UPDATE contributions SET status='PAYE',paid_at=NOW(),tchin_status='completed',tchin_reference=COALESCE($1,tchin_reference),tchin_mode=COALESCE($2,tchin_mode) WHERE id=$3 AND status<>'PAYE'",[td.reference||null,td.mode||null,c.id]);await pool.query('UPDATE cagnottes SET total_amount=total_amount+$1,updated_at=NOW() WHERE id=$2',[c.amount,c.cagnotte_id]);return res.json({success:true,status:'completed',paid:true});}res.json({success:true,status,paid:c.status==='PAYE'});}));
+app.post('/api/cagnottes/:id/contribute',asyncRoute(async(req,res)=>{await ensureCagnotteTables();const id=Number(req.params.id),name=clean(req.body.name,255),email=clean(req.body.email,255).toLowerCase(),amount=positiveInt(req.body.amount);if(!id||!amount||amount<100)return res.status(400).json({success:false,message:'Choisissez un montant d’au moins 100 FCFA.'});const c=await pool.connect();try{await c.query('BEGIN');const cg=await c.query("SELECT * FROM cagnottes WHERE id=$1 AND status='PUBLIE' FOR UPDATE",[id]);if(!cg.rows.length)throw new Error('Cagnotte indisponible.');const ref='CAG-'+crypto.randomBytes(5).toString('hex').toUpperCase();await c.query('INSERT INTO contributions(cagnotte_id,contributor_name,contributor_email,amount,reference,user_id) VALUES($1,$2,$3,$4,$5,$6)',[id,name||'Anonyme',email||null,amount,ref,req.session?.user?.role==='PARTICIPANT'?req.session.user.id:null]);await c.query('COMMIT');const returnUrl=process.env.TCHIN_RETURN_URL||`${FRONTEND_URL}/?cagnotte=return`;const cancelUrl=process.env.TCHIN_CANCEL_URL||`${FRONTEND_URL}/?cagnotte=cancel`;const callback=process.env.TCHIN_CALLBACK_URL||`${req.protocol}://${req.get('host')}/api/webhooks/tchin`;const td=await tchinRequest('/payments',{method:'POST',body:JSON.stringify({amount,description:`Ticketora Cagnotte ${ref} - ${cg.rows[0].title}`,env:process.env.TCHIN_ENV||'test',return_url:returnUrl,cancel_url:cancelUrl,callback_url:callback,fees_on_customer:false})});await pool.query('UPDATE contributions SET tchin_token=$1,tchin_status=\'pending\',tchin_mode=$2 WHERE reference=$3',[td.token,process.env.TCHIN_ENV||'test',ref]);res.json({success:true,reference:ref,token:td.token,payment_url:td.payment_url,amount});}catch(e){try{await c.query('ROLLBACK')}catch{};res.status(400).json({success:false,message:e.message});}finally{c.release();}}));
+app.get('/api/cagnottes/contributions/:token/status',asyncRoute(async(req,res)=>{await ensureCagnotteTables();const token=clean(req.params.token,255);const r=await pool.query('SELECT c.*,g.title FROM contributions c JOIN cagnottes g ON g.id=c.cagnotte_id WHERE c.tchin_token=$1',[token]);if(!r.rows.length)return res.status(404).json({success:false,message:'Contribution introuvable.'});const c=r.rows[0];const td=await tchinRequest(`/payments/${encodeURIComponent(token)}/status`,{method:'GET'});const status=td.status||td.data?.status||c.tchin_status||'pending';if(status==='completed'&&c.status!=='PAYE'&&String(process.env.TCHIN_ENV||'test')!=='test'){await pool.query("UPDATE contributions SET status='PAYE',paid_at=NOW(),tchin_status='completed',tchin_reference=COALESCE($1,tchin_reference),tchin_mode=COALESCE($2,tchin_mode) WHERE id=$3 AND status<>'PAYE'",[td.reference||null,td.mode||null,c.id]);await pool.query('UPDATE cagnottes SET total_amount=total_amount+$1,updated_at=NOW() WHERE id=$2',[c.amount,c.cagnotte_id]);const fresh=await pool.query('SELECT c.reference,c.amount,c.created_at,c.status,g.title FROM contributions c JOIN cagnottes g ON g.id=c.cagnotte_id WHERE c.id=$1',[c.id]);return res.json({success:true,status:'completed',paid:true,contribution:fresh.rows[0]||c});}res.json({success:true,status,paid:c.status==='PAYE'});}));
+
+// ---------- PARTICIPANTS / EXPORTS / RAPPORTS V3 ----------
+app.get('/api/organizers/events/:id/participants',requireOrg,asyncRoute(async(req,res)=>{
+ const id=Number(req.params.id);const r=await pool.query(`SELECT t.id,t.code AS ticket_id,t.customer_name,t.customer_email,t.ticket_type,t.total_amount,t.used,t.used_at,t.created_at FROM tickets t WHERE t.event_id=$1 AND t.org_id=$2 ORDER BY t.id DESC`,[id,req.session.user.id]);res.json({success:true,participants:r.rows});
+}));
+app.get('/api/organizers/events/:id/report',requireOrg,asyncRoute(async(req,res)=>{
+ const id=Number(req.params.id);const ev=await pool.query('SELECT * FROM events WHERE id=$1 AND org_id=$2',[id,req.session.user.id]);if(!ev.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});
+ const r=await pool.query(`SELECT COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int revenue,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1`,[id]);const x=r.rows[0];res.json({success:true,event:ev.rows[0],report:{tickets_sold:Number(x.tickets),validated:Number(x.validated),absent:Math.max(0,Number(x.tickets)-Number(x.validated)),revenue:Number(x.revenue)}});
+}));
+function csvCell(v){const s=String(v??'');return '"'+s.replace(/"/g,'""')+'"';}
+async function exportTickets(req,res,scope){
+ const id=req.params.id?Number(req.params.id):null;let q=`SELECT t.code AS ticket_id,t.customer_name AS participant,t.customer_email,t.ticket_type,t.total_amount,t.used AS validated,t.used_at,t.created_at,e.title AS event,e.date FROM tickets t JOIN events e ON e.id=t.event_id`;const args=[];
+ if(scope==='org'){q+=' WHERE t.org_id=$1';args.push(req.session.user.id);if(id){q+=' AND t.event_id=$2';args.push(id);}} else if(id){q+=' WHERE t.event_id=$1';args.push(id);}q+=' ORDER BY t.id DESC';
+ const r=await pool.query(q,args);const headers=['ticket_id','participant','customer_email','ticket_type','total_amount','validated','used_at','created_at','event','date'];res.type('text/csv; charset=utf-8').set('Content-Disposition','attachment; filename="ticketora-tickets.csv"').send('\ufeff'+headers.join(';')+'\n'+r.rows.map(x=>headers.map(h=>csvCell(x[h])).join(';')).join('\n'));
+}
+app.get('/api/organizers/export/tickets',requireOrg,asyncRoute(async(req,res)=>exportTickets(req,res,'org')));
+app.get('/api/organizers/events/:id/export',requireOrg,asyncRoute(async(req,res)=>exportTickets(req,res,'org')));
+app.get('/api/admin/export/tickets',requireAdmin,asyncRoute(async(req,res)=>exportTickets(req,res,'admin')));
+app.get('/api/admin/events/:id/report',requireAdmin,asyncRoute(async(req,res)=>{
+ const id=Number(req.params.id);const ev=await pool.query('SELECT * FROM events WHERE id=$1',[id]);if(!ev.rows.length)return res.status(404).json({success:false});const r=await pool.query(`SELECT COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int revenue,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1`,[id]);const x=r.rows[0];res.json({success:true,event:ev.rows[0],report:{tickets_sold:Number(x.tickets),validated:Number(x.validated),absent:Math.max(0,Number(x.tickets)-Number(x.validated)),revenue:Number(x.revenue)}});
+}));
+app.post('/api/admin/tickets/free',requireAdmin,asyncRoute(async(req,res)=>{
+ const eventId=Number(req.body.eventId),ticketType=clean(req.body.ticketType,120),name=clean(req.body.name||'Invitation officielle',255),email=clean(req.body.email||'admin@ticketora.local',255).toLowerCase();if(!eventId||!ticketType)return res.status(400).json({success:false,message:'Événement et type de billet obligatoires.'});
+ const ev=await pool.query('SELECT * FROM events WHERE id=$1',[eventId]);if(!ev.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});
+ const ref='ADM-'+crypto.randomBytes(5).toString('hex').toUpperCase(),c=await pool.connect();try{await c.query('BEGIN');const o=await c.query(`INSERT INTO orders(reference,event_id,ticket_type,customer_name,customer_email,base_amount,discount_amount,total_amount,status) VALUES($1,$2,$3,$4,$5,0,0,0,'PAID') RETURNING id`,[ref,eventId,ticketType,name,email]);let code=null;for(let i=0;i<10;i++){const q=fmtTicket();if(!(await c.query('SELECT 1 FROM tickets WHERE code=$1',[q])).rows.length){code=q;break;}}if(!code)throw new Error('Impossible de générer le ticket.');const t=await c.query(`INSERT INTO tickets(order_id,code,event_id,org_id,event_title,event_date,event_location,ticket_type,customer_name,customer_email,total_amount,admin_commission,organizer_amount,commission_rate,issued_by_admin) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,0,0,0,true) RETURNING *`,[o.rows[0].id,code,eventId,ev.rows[0].org_id,ev.rows[0].title,ev.rows[0].date,ev.rows[0].location,ticketType,name,email]);await c.query('COMMIT');res.status(201).json({success:true,ticket:t.rows[0]});}catch(e){try{await c.query('ROLLBACK')}catch{};throw e}finally{c.release();}
+}));
+app.get('/api/events/partners',asyncRoute(async(req,res)=>{const r=await pool.query('SELECT id,name,logo_url,active FROM event_partners WHERE active=true ORDER BY sort_order,id');res.json({success:true,partners:r.rows});}));
+app.get('/api/admin/partners',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query('SELECT id,name,logo_url,active,sort_order FROM event_partners ORDER BY sort_order,id');res.json({success:true,partners:r.rows});}));
+app.post('/api/admin/partners',requireAdmin,asyncRoute(async(req,res)=>{
+  const name=clean(req.body.name,120),logo=String(req.body.logoUrl||'').trim();
+  const active=req.body.active!==false;
+  if(!name||!logo)return res.status(400).json({success:false,message:'Nom et logo obligatoires.'});
+  if(logo.length>1500000)return res.status(413).json({success:false,message:'Le logo est trop lourd après compression.'});
+  if(!/^data:image\/(png|jpe?g|webp|svg\+xml);base64,/i.test(logo) && !/^https?:\/\//i.test(logo))return res.status(400).json({success:false,message:'Format de logo invalide.'});
+  const next=await pool.query('SELECT COALESCE(MAX(sort_order),0)+1 AS n FROM event_partners');
+  const r=await pool.query('INSERT INTO event_partners(name,logo_url,active,sort_order) VALUES($1,$2,$3,$4) RETURNING *',[name,logo,active,Number(next.rows[0].n)||1]);
+  res.status(201).json({success:true,partner:r.rows[0]});
+}));
+app.patch('/api/admin/partners/:id',requireAdmin,asyncRoute(async(req,res)=>{
+  const id=Number(req.params.id); if(!Number.isInteger(id))return res.status(400).json({success:false,message:'Partenaire invalide.'});
+  const fields=[],values=[],push=(field,value)=>{fields.push(field+'=$'+(values.length+1));values.push(value)};
+  if(req.body.name!==undefined)push('name',clean(req.body.name,120));
+  if(req.body.logoUrl!==undefined){const logo=String(req.body.logoUrl||'').trim();if(logo.length>1500000) return res.status(413).json({success:false,message:'Le logo est trop lourd après compression.'});push('logo_url',logo);}
+  if(req.body.active!==undefined)push('active',Boolean(req.body.active));
+  if(req.body.sortOrder!==undefined)push('sort_order',Math.max(0,Number(req.body.sortOrder)||0));
+  if(!fields.length)return res.status(400).json({success:false,message:'Aucune modification.'});
+  values.push(id);
+  const r=await pool.query(`UPDATE event_partners SET ${fields.join(',')} WHERE id=$${values.length} RETURNING *`,values);
+  if(!r.rows.length)return res.status(404).json({success:false,message:'Partenaire introuvable.'});
+  res.json({success:true,partner:r.rows[0]});
+}));
+app.delete('/api/admin/partners/:id',requireAdmin,asyncRoute(async(req,res)=>{
+  const id=Number(req.params.id); if(!Number.isInteger(id))return res.status(400).json({success:false,message:'Partenaire invalide.'});
+  const r=await pool.query('DELETE FROM event_partners WHERE id=$1 RETURNING id',[id]);
+  if(!r.rows.length)return res.status(404).json({success:false,message:'Partenaire introuvable.'});
+  res.json({success:true});
+}));
+
+app.get('/api/cagnottes/contributions/verify/:reference',asyncRoute(async(req,res)=>{const r=await pool.query(`SELECT c.reference,c.amount,c.status,c.created_at,g.title FROM contributions c JOIN cagnottes g ON g.id=c.cagnotte_id WHERE c.reference=$1`,[clean(req.params.reference,80).toUpperCase()]);if(!r.rows.length)return res.status(404).json({success:false,status:'INVALID'});res.json({success:true,verification:r.rows[0]});}));
 // ---------- QR ----------
 app.get('/api/tickets/:code/qr',asyncRoute(async(req,res)=>{const code=clean(req.params.code,32).toUpperCase();const r=await pool.query('SELECT 1 FROM tickets WHERE code=$1',[code]);if(!r.rows.length)return res.status(404).end();const png=await QRCode.toBuffer(code,{width:500,margin:1,errorCorrectionLevel:'M'});res.type('png').send(png);}));
 
 // Static files for local same-origin testing.
 app.use(express.static(__dirname));
-app.use((err,req,res,next)=>{console.error(err);if(res.headersSent)return next(err);res.status(500).json({success:false,message:'Erreur interne du serveur.'});});
+app.use((err,req,res,next)=>{console.error(err);if(res.headersSent)return next(err);if(err?.type==='entity.too.large')return res.status(413).json({success:false,message:'Fichier ou requête trop volumineux.'});res.status(500).json({success:false,message:'Erreur interne du serveur.'});});
 
-app.listen(PORT,async()=>{try{await ensureEventImageColumn();await ensureAdminPayoutTable();await ensurePayoutTchinColumns();await ensureChatTable();await ensureScannerTable();await ensureCagnotteTables();await ensurePromoTables();console.log(`Ticketora API sur http://localhost:${PORT}`);setInterval(syncPendingTchinPayouts,120000);}catch(e){console.error('Initialisation base admin retraits:',e.message);console.log(`Ticketora API sur http://localhost:${PORT}`);}});
+app.listen(PORT,async()=>{try{await ensureEventImageColumn();await ensureAdminPayoutTable();await ensurePayoutTchinColumns();await ensureChatTable();await ensureScannerTable();await ensureCagnotteTables();await ensurePromoTables();await ensureV3Tables();console.log(`Ticketora API sur http://localhost:${PORT}`);setInterval(syncPendingTchinPayouts,120000);}catch(e){console.error('Initialisation base admin retraits:',e.message);console.log(`Ticketora API sur http://localhost:${PORT}`);}});

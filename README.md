@@ -44,3 +44,25 @@ Le retrait organisateur utilise le décaissement Tchin côté serveur :
 7. Les frais Tchin sont enregistrés séparément (`tchin_fee`, `tchin_debited`).
 
 Les clés Tchin restent uniquement dans les variables d’environnement du serveur Render. Ne jamais mettre `.env` dans GitHub ou dans le ZIP de déploiement.
+
+
+## Ticketora V3 — améliorations
+- Événements gratuits avec émission de billet à 0 FCFA.
+- Catalogue public excluant automatiquement les événements terminés.
+- Badge SOLD OUT automatique.
+- Comptes participants et historique billets/participations.
+- Participants et validations synchronisées côté serveur.
+- Génération de tickets officiels gratuits depuis l'administration.
+- Exports CSV et rapports événement.
+- Reçu numérique de cagnotte téléchargeable/partageable avec QR de vérification.
+- Bande partenaires, Hero animé, FAQ, fonctionnalités, contact et pages légales.
+- Animations légères respectant `prefers-reduced-motion`.
+- Les secrets restent exclusivement dans `.env` côté serveur.
+
+
+## V4 — Hero machine à écrire & partenaires
+- Hero en typographie Serif, avec textes à taille maîtrisée et effet machine à écrire lettre par lettre.
+- Section partenaires déplacée en dernière section avant le footer.
+- Admin → Partenaires : ajout de logo, aperçu, publication/masquage, modification du nom et suppression.
+- Le logo Tchin fourni est inclus comme partenaire initial et s'affiche automatiquement côté public.
+- Les nouveaux logos publiés depuis l'administration apparaissent automatiquement sur la page d'accueil.

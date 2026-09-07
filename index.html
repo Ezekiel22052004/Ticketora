@@ -10,11 +10,18 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         html{scroll-behavior:smooth}
-        body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+        body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
+        .fa-solid,.fa-regular,.fa-brands,.fa{font-family:"Font Awesome 6 Free" !important}
+        .fa-brands{font-family:"Font Awesome 6 Brands" !important}
         .public-nav{height:80px;background:#06132f}
         .hero-public{background:linear-gradient(180deg,#061a40 0%,#081d45 100%)}
-        .hero-wrap{min-height:532px}
+        .hero-wrap{min-height:0}
         .search-box{box-shadow:0 12px 35px rgba(0,0,0,.16)}
+        .hero-serif{font-family:Georgia,"Times New Roman",serif}
+        .hero-title{font-size:clamp(2rem,4.2vw,3rem);line-height:1.04;letter-spacing:-.025em}
+        .hero-typewriter{display:inline-block;min-width:18ch;white-space:nowrap}
+        .hero-cursor{display:inline-block;width:2px;height:.82em;background:#F97316;margin-left:4px;vertical-align:-.04em;animation:heroCursor 1s step-end infinite}
+        @keyframes heroCursor{0%,48%{opacity:1}49%,100%{opacity:0}}
         .event-card-public{transition:transform .2s ease,box-shadow .2s ease}
         .event-card-public:hover{transform:translateY(-4px);box-shadow:0 16px 35px rgba(15,23,42,.12)}
         .soft-section{background:#f5f7fb}
@@ -25,6 +32,18 @@
             .hero-wrap{min-height:0}
         }
     </style>
+
+<style>
+.hero-rotating-wrap{display:inline-block;min-height:1em}.hero-word-in{animation:heroIn .45s ease both}.hero-word-out{animation:heroOut .2s ease both}
+@keyframes heroIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}@keyframes heroOut{to{opacity:0;transform:translateY(-6px)}}
+.reveal{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}.reveal.is-visible{opacity:1;transform:none}
+.event-card-public{transition:transform .3s ease,box-shadow .3s ease}.event-card-public:hover{transform:translateY(-6px);box-shadow:0 20px 45px rgba(15,23,42,.14)}.event-poster{transition:transform .5s ease}.event-card-public:hover .event-poster{transform:scale(1.035)}
+.partners-marquee{overflow:hidden;mask-image:linear-gradient(to right,transparent,black 8%,black 92%,transparent)}.partners-track{display:flex;width:max-content;animation:partnerScroll 24s linear infinite;gap:18px}.partners-track:hover{animation-play-state:paused}
+.partner-logo{height:58px;min-width:150px;padding:10px 22px;border:1px solid #e5e7eb;border-radius:16px;background:#fff;display:flex;align-items:center;justify-content:center}.partner-logo img{max-height:38px;max-width:120px;object-fit:contain}.partner-text{font-weight:900;color:#071a3b;letter-spacing:.04em}@keyframes partnerScroll{to{transform:translateX(-50%)}}
+.feature-card{background:#fff;border:1px solid #e5e7eb;border-radius:20px;padding:22px;transition:.3s ease}.feature-card:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(15,23,42,.08)}.feature-card i{width:42px;height:42px;border-radius:12px;background:#fff7ed;color:#f97316;display:flex;align-items:center;justify-content:center;margin-bottom:15px}.feature-card h3{font-weight:900;color:#071a3b}.feature-card p{font-size:13px;color:#64748b;margin-top:5px;line-height:1.6}
+.faq-item{border:1px solid #e5e7eb;border-radius:16px;padding:0 20px;background:#fff;overflow:hidden}.faq-item summary{cursor:pointer;list-style:none;font-weight:800;color:#071a3b;padding:18px 0;position:relative}.faq-item summary::-webkit-details-marker{display:none}.faq-item summary:after{content:'+';position:absolute;right:0;color:#f97316;font-size:20px}.faq-item[open] summary:after{content:'−'}.faq-item p{color:#64748b;line-height:1.7;font-size:14px;padding:0 0 18px;animation:faqOpen .3s ease}@keyframes faqOpen{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.reveal{opacity:1;transform:none}}
+</style>
 </head>
 <body class="bg-white text-slate-900 min-h-screen">
 
@@ -37,7 +56,7 @@
 
         <div class="hidden md:flex items-center gap-7">
             <button onclick="showSection('client-events');document.getElementById('events-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Événements</button>
-            <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Cagnottes</button>
+            <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Cagnottes</button><button onclick="document.getElementById('fonctionnalites').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Fonctionnalités</button><button onclick="document.getElementById('faq').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">FAQ</button>
             <button onclick="openParticipantLogin()" class="nav-link text-sm font-bold">Connexion</button>
             <button onclick="openParticipantRegister()" class="bg-[#F97316] hover:bg-orange-600 text-white text-sm px-5 py-3 rounded-xl font-bold shadow-lg shadow-orange-900/20 transition">Créer un compte</button>
         </div>
@@ -62,15 +81,16 @@
                     <div class="inline-flex items-center rounded-full border border-[#F97316]/70 px-3 py-1.5 mb-5">
                         <span class="text-[13px] md:text-sm font-black text-[#F97316]">LA BILLETTERIE NOUVELLE GÉNÉRATION</span>
                     </div>
-                    <h1 class="text-5xl md:text-6xl xl:text-[60px] leading-[.96] font-black tracking-tight">
-                        Réservez. <span class="text-[#F97316]">Vivez.</span><br>Profitez.
+                    <h1 class="hero-serif hero-title font-bold">
+                        <span>Réservez <span id="hero-rotating-text" class="text-[#F97316] hero-typewriter" aria-live="polite">votre événement</span><span class="hero-cursor" aria-hidden="true"></span></span><br>
+                        <span class="text-[#F97316]">Vivez.</span> Profitez.
                     </h1>
                     <p class="mt-6 text-[17px] md:text-lg leading-8 font-semibold text-blue-100 max-w-2xl">
                         Découvrez les meilleurs événements, achetez vos billets en quelques clics et gardez tous vos tickets au même endroit.
                     </p>
 
                     <div class="search-box mt-7 bg-white rounded-2xl p-2 flex gap-2 max-w-2xl">
-                        <input id="hero-search-event" type="text" onkeydown="if(event.key==='Enter')searchFromHero()" placeholder="Rechercher un événement, une ville, une catégorie..." class="min-w-0 flex-1 px-3 md:px-4 py-3 bg-transparent text-slate-600 placeholder:text-slate-400 text-base font-semibold outline-none">
+                        <input id="hero-search-event" type="text" onkeydown="if(event.key==='Enter')searchFromHero()" placeholder="Cherche un événement" class="min-w-0 flex-1 px-3 md:px-4 py-3 bg-transparent text-slate-600 placeholder:text-slate-400 text-base font-semibold outline-none">
                         <button onclick="searchFromHero()" class="shrink-0 bg-[#F97316] hover:bg-orange-600 text-white font-bold px-5 md:px-7 py-3 rounded-xl transition">Rechercher</button>
                     </div>
                 </div>
@@ -190,11 +210,56 @@
             <button onclick="closeParticipantModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-xl"></i></button>
             <div class="w-12 h-12 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-user"></i></div>
             <h3 id="participant-modal-title" class="text-2xl font-black text-[#071a3b] mt-4">Connexion</h3>
-            <p class="text-sm text-slate-500 mt-2">L'espace participant sera activé avec le compte client et l'historique des billets.</p>
-            <div class="mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-600 font-medium">Pour le moment, vous pouvez acheter un billet directement sans créer de compte.</div>
-            <button onclick="closeParticipantModal();document.getElementById('events-public').scrollIntoView({behavior:'smooth'})" class="mt-5 w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Découvrir les événements</button>
+            <p class="text-sm text-slate-500 mt-2">Accédez à vos billets, commandes, participations et historique.</p>
+            <div class="space-y-3 mt-5">
+              <input id="participant-name" class="hidden w-full border rounded-xl px-4 py-3" placeholder="Nom complet">
+              <input id="participant-email" type="email" class="w-full border rounded-xl px-4 py-3" placeholder="Email">
+              <input id="participant-password" type="password" class="w-full border rounded-xl px-4 py-3" placeholder="Mot de passe (8 caractères min.)">
+              <button id="participant-auth-btn" onclick="participantAuth(document.getElementById('participant-modal-title').innerText==='Créer un compte'?'register':'login')" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Continuer</button>
+              <button onclick="showParticipantHistory()" class="w-full bg-slate-100 text-slate-700 font-bold py-3 rounded-xl">Voir mon historique</button>
+            </div>
+            <div class="mt-5 pt-4 border-t text-[11px] text-center text-slate-400"><a href="politique-confidentialite.html" class="hover:text-[#F97316]">Confidentialité</a> · <a href="cgu.html" class="hover:text-[#F97316]">CGU</a> · <a href="conditions-vente.html" class="hover:text-[#F97316]">Vente & billetterie</a> · <a href="remboursement.html" class="hover:text-[#F97316]">Remboursement</a></div>
         </div>
     </div>
+
+
+<!-- FONCTIONNALITÉS -->
+<section id="fonctionnalites" class="soft-section px-6 md:px-8 py-14">
+ <div class="max-w-7xl mx-auto"><div class="max-w-2xl mb-8"><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Ticketora</p><h2 class="text-3xl md:text-4xl font-black text-[#071a3b]">Tout ce qu’il faut pour vos événements</h2><p class="text-slate-500 mt-2 font-semibold">Une expérience simple pour les participants et des outils puissants pour les organisateurs.</p></div>
+ <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <div class="feature-card reveal"><i class="fa-solid fa-magnifying-glass"></i><h3>Recherche</h3><p>Trouvez rapidement vos événements.</p></div>
+  <div class="feature-card reveal"><i class="fa-solid fa-ticket"></i><h3>Billetterie</h3><p>Achat, téléchargement et QR Code sécurisé.</p></div>
+  <div class="feature-card reveal"><i class="fa-solid fa-chart-line"></i><h3>Gestion</h3><p>Ventes, participants, scans et statistiques.</p></div>
+  <div class="feature-card reveal"><i class="fa-solid fa-file-export"></i><h3>Exports & rapports</h3><p>Exportez vos données et analysez vos résultats.</p></div>
+ </div>
+ </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq" class="bg-white px-6 md:px-8 py-14">
+ <div class="max-w-4xl mx-auto"><div class="text-center mb-8"><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Aide</p><h2 class="text-3xl md:text-4xl font-black text-[#071a3b]">Questions fréquentes</h2></div>
+ <div class="space-y-3">
+  <details class="faq-item reveal"><summary>Qu’est-ce que Ticketora ?</summary><p>Ticketora est une plateforme de billetterie et de gestion d’événements qui permet de rechercher, réserver, acheter et gérer facilement ses billets.</p></details>
+  <details class="faq-item reveal"><summary>Comment acheter un billet ?</summary><p>Sélectionnez un événement, choisissez votre type de billet, renseignez vos informations puis effectuez le paiement via le moyen proposé.</p></details>
+  <details class="faq-item reveal"><summary>Comment récupérer mon billet ?</summary><p>Après confirmation du paiement, votre billet est généré avec un identifiant unique et un QR Code. Vous pouvez le télécharger et le conserver.</p></details>
+  <details class="faq-item reveal"><summary>Les événements gratuits sont-ils disponibles ?</summary><p>Oui. Un événement gratuit ne demande aucun paiement. Une inscription permet de recevoir un billet gratuit lorsque l’organisateur l’a activé.</p></details>
+  <details class="faq-item reveal"><summary>Comment devenir organisateur ?</summary><p>Envoyez votre dossier à Ticketora. Après vérification et validation, vous recevez les informations nécessaires pour accéder à votre espace organisateur.</p></details>
+  <details class="faq-item reveal"><summary>Comment fonctionne le QR Code à l’entrée ?</summary><p>Le QR Code est contrôlé par l’équipe de l’événement. Une validation est enregistrée côté serveur afin d’éviter qu’un billet soit accepté plusieurs fois.</p></details>
+  <details class="faq-item reveal"><summary>Comment contacter Ticketora ?</summary><p>📞 +228 72 75 36 85 · 📧 ticketora2026@gmail.com</p></details>
+ </div></div>
+</section>
+
+<!-- CONTACT -->
+<section id="contact" class="bg-[#06132f] text-white px-6 md:px-8 py-12">
+ <div class="max-w-7xl mx-auto grid md:grid-cols-2 gap-8 items-center"><div><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Besoin d’aide ?</p><h2 class="text-3xl font-black mt-2">Contactez Ticketora</h2><p class="text-blue-100 mt-3">Notre équipe est disponible pour vous accompagner.</p></div><div class="flex flex-col sm:flex-row gap-3"><a href="tel:+22872753685" class="bg-white/10 border border-white/10 rounded-2xl px-5 py-4 font-bold"><i class="fa-solid fa-phone text-[#F97316] mr-2"></i>+228 72 75 36 85</a><a href="mailto:ticketora2026@gmail.com" class="bg-[#F97316] rounded-2xl px-5 py-4 font-bold"><i class="fa-solid fa-envelope mr-2"></i>ticketora2026@gmail.com</a></div></div>
+</section>
+
+<!-- PARTENAIRES / COLLABORATEURS -->
+<section id="partenaires-public" class="bg-white border-t border-slate-100 py-6 overflow-hidden">
+  <div class="max-w-7xl mx-auto px-6 mb-4 flex items-center justify-between"><div><p class="text-[#F97316] text-[10px] font-black uppercase tracking-[.2em]">Ils nous accompagnent</p><h3 class="text-lg font-black text-[#071a3b]">Nos partenaires & collaborateurs</h3></div></div>
+  <div class="partners-marquee"><div id="partners-track" class="partners-track"></div></div>
+</section>
+
 
     <!-- SUPPORT -->
     <a href="https://wa.me/22872753685" target="_blank" rel="noopener noreferrer" class="fixed bottom-6 right-6 bg-emerald-500 hover:bg-emerald-600 text-white p-4 rounded-full shadow-2xl z-40 flex items-center gap-2 font-bold text-sm transition transform hover:scale-105" title="Support WhatsApp">
@@ -204,7 +269,7 @@
     <footer class="bg-[#06132f] text-white px-6 md:px-8 py-10">
         <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-5">
             <div class="flex items-center gap-3"><img src="logo.png" class="w-9 h-9 object-contain" alt="Ticketora"><span class="font-black text-xl">Ticket<span class="text-[#F97316]">ora</span></span></div>
-            <p class="text-slate-400 text-sm">© 2026 Ticketora. Réservez. Vivez. Profitez.</p>
+            <div class="text-center md:text-right"><p class="text-slate-400 text-sm">© 2026 Ticketora. Réservez. Vivez. Profitez.</p><div class="flex flex-wrap justify-center md:justify-end gap-3 mt-2 text-[11px] text-slate-500"><a href="politique-confidentialite.html">Confidentialité</a><a href="cgu.html">CGU</a><a href="conditions-vente.html">Vente & billetterie</a><a href="remboursement.html">Remboursement</a><a href="mentions-legales.html">Mentions légales</a></div></div>
         </div>
     </footer>
 
@@ -218,5 +283,32 @@
         function closeParticipantModal(){const m=document.getElementById('participant-modal');m.classList.add('hidden');m.classList.remove('flex')}
         window.togglePublicMenu=togglePublicMenu;window.searchFromHero=searchFromHero;window.openParticipantLogin=openParticipantLogin;window.openParticipantRegister=openParticipantRegister;window.closeParticipantModal=closeParticipantModal;
     </script>
+<script>
+const heroWords=['votre événement','votre concert','votre expérience'];
+let heroWordIndex=0,heroCharIndex=0,heroDeleting=false,heroTimer=null;
+function runHeroTypewriter(){
+  const el=document.getElementById('hero-rotating-text'); if(!el)return;
+  const word=heroWords[heroWordIndex];
+  if(!heroDeleting){
+    heroCharIndex=Math.min(heroCharIndex+1,word.length);
+    el.textContent=word.slice(0,heroCharIndex);
+    if(heroCharIndex===word.length){heroDeleting=true;heroTimer=setTimeout(runHeroTypewriter,2200);return;}
+    heroTimer=setTimeout(runHeroTypewriter,70);
+  }else{
+    heroCharIndex=Math.max(heroCharIndex-1,0);
+    el.textContent=word.slice(0,heroCharIndex);
+    if(heroCharIndex===0){heroDeleting=false;heroWordIndex=(heroWordIndex+1)%heroWords.length;heroTimer=setTimeout(runHeroTypewriter,350);return;}
+    heroTimer=setTimeout(runHeroTypewriter,42);
+  }
+}
+function startHeroTypewriter(){
+  clearTimeout(heroTimer);
+  const el=document.getElementById('hero-rotating-text');if(!el)return;
+  el.textContent='';heroCharIndex=0;heroDeleting=false;heroWordIndex=0;runHeroTypewriter();
+}
+function openParticipantRegister(){const m=document.getElementById('participant-modal');document.getElementById('participant-modal-title').innerText='Créer un compte';document.getElementById('participant-name').classList.remove('hidden');m.classList.remove('hidden');m.classList.add('flex')}
+function openParticipantLogin(){const m=document.getElementById('participant-modal');document.getElementById('participant-modal-title').innerText='Connexion';document.getElementById('participant-name').classList.add('hidden');m.classList.remove('hidden');m.classList.add('flex')}
+window.addEventListener('DOMContentLoaded',startHeroTypewriter);
+</script>
 </body>
 </html>

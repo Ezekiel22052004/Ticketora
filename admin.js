@@ -5,10 +5,10 @@ async function api(path,o={}){const r=await fetch(`${API}${path}`,{credentials:'
 function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 function fmt(n){return Number(n||0).toLocaleString('fr-FR');}
 function toast(m,error=false){const c=$('toast-container');if(!c)return;const e=document.createElement('div');e.className=`px-4 py-3 rounded-xl shadow-lg text-sm font-semibold ${error?'bg-rose-600':'bg-navy-900'} text-white`;e.innerText=m;c.appendChild(e);setTimeout(()=>e.remove(),3000);}
-function switchTab(t){['overview','events','organizers','payments','scanner','tickets','users','chat','cagnottes','logs','settings'].forEach(x=>{document.getElementById(`tab-${x}`)?.classList.toggle('hidden',x!==t);document.getElementById(`nav-${x}`)?.classList.toggle('active',x===t);});if(t==='chat')loadAdminChat();if(t==='tickets'||t==='users'||t==='logs'||t==='cagnottes')loadAdminExtra(t);if(t!=='scanner'&&t!=='chat'&&t!=='tickets'&&t!=='users'&&t!=='logs')refreshAdminData();}
+function switchTab(t){['overview','events','organizers','payments','scanner','tickets','users','chat','cagnottes','partners','logs','settings'].forEach(x=>{document.getElementById(`tab-${x}`)?.classList.toggle('hidden',x!==t);document.getElementById(`nav-${x}`)?.classList.toggle('active',x===t);});if(t==='chat')loadAdminChat();if(t==='partners')loadAdminPartners();if(t==='tickets'||t==='users'||t==='logs'||t==='cagnottes')loadAdminExtra(t);if(t!=='scanner'&&t!=='chat'&&t!=='tickets'&&t!=='users'&&t!=='logs'&&t!=='partners')refreshAdminData();}
 function openModal(id){$(id)?.classList.remove('hidden')} function closeModal(id){$(id)?.classList.add('hidden')}
 function filterAdminData(){const q=($('global-search-input')?.value||'').toLowerCase();document.querySelectorAll('#admin-events-list tr,#admin-org-list tr').forEach(r=>r.classList.toggle('hidden',!r.innerText.toLowerCase().includes(q)));}
-function showAdminLogin(){if($('admin-login-overlay'))return;const d=document.createElement('div');d.id='admin-login-overlay';d.className='fixed inset-0 bg-slate-900/95 backdrop-blur-sm z-[100] flex items-center justify-center p-4';d.innerHTML=`<div class="bg-white w-full max-w-md rounded-2xl p-7 shadow-2xl"><div class="text-center mb-6"><img src="logo.png" class="w-14 h-14 mx-auto rounded-xl object-contain"><h2 class="text-2xl font-black text-navy-900 mt-3">Connexion Admin</h2><p class="text-sm text-slate-500">Accès sécurisé au tableau de bord Ticketora</p></div><form id="admin-login-form" class="space-y-4"><input id="admin-login-email" type="email" required value="ticketora2026@gmail.com" class="w-full p-3 bg-slate-50 border rounded-xl"><input id="admin-login-password" type="password" required placeholder="Mot de passe" class="w-full p-3 bg-slate-50 border rounded-xl"><div id="admin-login-error" class="hidden text-sm text-rose-600 font-semibold"></div><button class="w-full bg-brand-orange hover:bg-brand-orangeDark text-white font-bold py-3 rounded-xl">Se connecter</button></form></div>`;document.body.appendChild(d);$('admin-login-form').onsubmit=loginAdmin;}
+function showAdminLogin(){if($('admin-login-overlay'))return;const d=document.createElement('div');d.id='admin-login-overlay';d.className='fixed inset-0 bg-slate-900/95 backdrop-blur-sm z-[100] flex items-center justify-center p-4';d.innerHTML=`<div class="bg-white w-full max-w-md rounded-2xl p-7 shadow-2xl"><div class="text-center mb-6"><img src="logo.png" class="w-14 h-14 mx-auto rounded-xl object-contain"><h2 class="text-2xl font-black text-navy-900 mt-3">Connexion Admin</h2><p class="text-sm text-slate-500">Accès sécurisé au tableau de bord Ticketora</p></div><form id="admin-login-form" class="space-y-4"><input id="admin-login-email" type="email" required value="ticketora2026@gmail.com" class="w-full p-3 bg-slate-50 border rounded-xl"><input id="admin-login-password" type="password" required placeholder="Mot de passe" class="w-full p-3 bg-slate-50 border rounded-xl"><div id="admin-login-error" class="hidden text-sm text-rose-600 font-semibold"></div><button class="w-full bg-brand-orange hover:bg-brand-orangeDark text-white font-bold py-3 rounded-xl">Se connecter</button></form><div class="text-[10px] text-slate-400 text-center mt-4"><a href="politique-confidentialite.html">Confidentialité</a> · <a href="cgu.html">CGU</a> · <a href="conditions-vente.html">Vente</a> · <a href="remboursement.html">Remboursement</a></div></div>`;document.body.appendChild(d);$('admin-login-form').onsubmit=loginAdmin;}
 async function loginAdmin(e){e.preventDefault();try{await api('/api/admin/login',{method:'POST',body:JSON.stringify({email:$('admin-login-email').value,password:$('admin-login-password').value})});$('admin-login-overlay')?.remove();await refreshAdminData();toast('Connexion réussie');}catch(err){$('admin-login-error').innerText=err.message;$('admin-login-error').classList.remove('hidden');}}
 async function ensureAdmin(){try{await api('/api/admin/me');return true}catch{showAdminLogin();return false;}}
 function renderOrganizers(){const el=$('admin-org-list');if(!el)return;el.innerHTML=data.organizers.map(o=>`<tr class="border-b text-sm"><td class="p-4 font-bold">${esc(o.nom)} ${esc(o.prenom)}</td><td class="p-4 text-slate-500">${esc(o.email)}<br><span class="text-xs">${esc(o.phone)}</span></td><td class="p-4">${fmt(o.event_count)}</td><td class="p-4">${fmt(o.tickets_sold)}</td><td class="p-4 font-bold">${fmt(o.revenue)} FCFA</td><td class="p-4"><span class="px-2 py-1 rounded text-[10px] font-bold ${o.status==='VALIDE'?'bg-emerald-100 text-emerald-700':o.status==='REFUSE'?'bg-red-100 text-red-700':'bg-amber-100 text-amber-700'}">${esc(o.status)}</span></td><td class="p-4 text-right whitespace-nowrap">${o.status==='EN_ATTENTE'?`<button onclick="adminApproveOrg(${o.id})" class="text-xs bg-emerald-600 text-white px-2 py-1 rounded font-bold">Valider</button><button onclick="adminRejectOrg(${o.id})" class="text-xs bg-red-600 text-white px-2 py-1 rounded font-bold ml-1">Refuser</button>`:''}<button onclick="adminDeleteOrg(${o.id})" class="text-xs bg-slate-100 text-red-600 px-2 py-1 rounded font-bold ml-1">Supprimer</button></td></tr>`).join('')||'<tr><td colspan="7" class="p-6 text-center text-slate-400">Aucun organisateur.</td></tr>';}
@@ -34,23 +34,116 @@ async function handleCreateEvent(e){e.preventDefault();try{const imageUrl=await 
 async function simulateScan(){const code=$('scanner-input').value.trim().toUpperCase(),res=$('scan-result');if(!code)return;try{const d=await api('/api/admin/tickets/scan',{method:'POST',body:JSON.stringify({code})});res.className='p-6 rounded-2xl bg-emerald-100 text-emerald-800';$('scan-icon').innerHTML='<i class="fa-solid fa-circle-check"></i>';$('scan-title').innerText='ENTRÉE AUTORISÉE';$('scan-details').innerText=d.ticket?.customer_name||'Billet valide';}catch(err){res.className='p-6 rounded-2xl bg-rose-100 text-rose-800';$('scan-icon').innerHTML='<i class="fa-solid fa-circle-xmark"></i>';$('scan-title').innerText='BILLET NON VALIDE';$('scan-details').innerText=err.message;}res.classList.remove('hidden')}
 async function logoutAdmin(){await api('/api/admin/logout',{method:'POST'});location.reload()}
 window.switchTab=switchTab;window.openModal=openModal;window.closeModal=closeModal;window.filterAdminData=filterAdminData;window.adminApproveOrg=adminApproveOrg;window.adminRejectOrg=adminRejectOrg;window.adminDeleteOrg=adminDeleteOrg;window.adminSetEventStatus=adminSetEventStatus;window.handleCreateEvent=handleCreateEvent;window.simulateScan=simulateScan;window.logoutAdmin=logoutAdmin;window.adminSetPayoutStatus=adminSetPayoutStatus;window.createAdminWithdrawal=createAdminWithdrawal;window.adminSetWithdrawalStatus=adminSetWithdrawalStatus;window.downloadPayoutPDF=downloadPayoutPDF;
-window.addEventListener('DOMContentLoaded',()=>{refreshAdminData();});
+window.addEventListener('DOMContentLoaded',()=>{
+  refreshAdminData();
+  const pf=$('partner-form');
+  if(pf)pf.addEventListener('submit',createAdminPartner);
+  const input=$('partner-logo-file');
+  if(input)input.addEventListener('change',async()=>{
+    const file=input.files?.[0];if(!file)return;
+    try{adminPartnerDraftLogo=await optimizePartnerImage(file);$('partner-preview-img').src=adminPartnerDraftLogo;$('partner-preview').classList.remove('hidden');}
+    catch(e){toast(e.message,true);input.value='';}
+  });
+});
 
 window.adminDeleteEvent=adminDeleteEvent;window.adminDeletePayout=adminDeletePayout;
 
 window.adminDeleteWithdrawal=adminDeleteWithdrawal;
 
+
+let adminPartnerDraftLogo='';
+function optimizePartnerImage(file){
+  return new Promise((resolve,reject)=>{
+    if(!file)return reject(new Error('Logo manquant.'));
+    if(file.size>8*1024*1024)return reject(new Error('Le logo ne doit pas dépasser 8 Mo.'));
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        const maxW=700,maxH=320;
+        const scale=Math.min(1,maxW/img.width,maxH/img.height);
+        const c=document.createElement('canvas');
+        c.width=Math.max(1,Math.round(img.width*scale));
+        c.height=Math.max(1,Math.round(img.height*scale));
+        const ctx=c.getContext('2d');
+        ctx.clearRect(0,0,c.width,c.height);
+        ctx.drawImage(img,0,0,c.width,c.height);
+        let data=c.toDataURL('image/webp',.82);
+        if(!data.startsWith('data:image/webp'))data=c.toDataURL('image/png');
+        if(data.length>1400000)return reject(new Error('Logo encore trop lourd après compression. Choisissez un logo plus simple.'));
+        resolve(data);
+      };
+      img.onerror=()=>reject(new Error('Format de logo non pris en charge.'));
+      img.src=reader.result;
+    };
+    reader.onerror=()=>reject(new Error('Impossible de lire le logo.'));
+    reader.readAsDataURL(file);
+  });
+}
+async function loadAdminPartners(){
+  try{
+    const d=await api('/api/admin/partners');
+    const list=$('admin-partners-list'); if(!list)return;
+    const partners=d.partners||[];
+    list.innerHTML=partners.length?partners.map(p=>`
+      <div class="rounded-2xl border border-[#29405f] bg-[#091a38] p-3 flex flex-col sm:flex-row gap-3 sm:items-center">
+        <div class="w-full sm:w-28 h-20 bg-white rounded-xl p-2 flex items-center justify-center shrink-0">
+          <img src="${esc(p.logo_url)}" alt="${esc(p.name)}" class="max-w-full max-h-full object-contain">
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="font-extrabold text-sm text-white truncate">${esc(p.name)}</div>
+          <div class="text-[10px] mt-1 ${p.active?'text-emerald-400':'text-slate-500'}">${p.active?'● PUBLIÉ':'○ MASQUÉ'}</div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="toggleAdminPartner(${p.id},${!p.active})" class="px-3 py-2 rounded-lg text-[11px] font-bold ${p.active?'bg-[#162a49] text-white':'bg-emerald-600 text-white'}">${p.active?'Masquer':'Publier'}</button>
+          <button onclick="renameAdminPartner(${p.id})" class="px-3 py-2 rounded-lg bg-[#162a49] text-white text-[11px] font-bold">Modifier</button>
+          <button onclick="deleteAdminPartner(${p.id})" class="px-3 py-2 rounded-lg bg-rose-600/90 text-white text-[11px] font-bold">Supprimer</button>
+        </div>
+      </div>`).join(''):'<div class="text-sm text-[#7892b5] py-8 text-center">Aucun partenaire pour le moment.</div>';
+  }catch(e){console.warn('Partenaires:',e);}
+}
+async function toggleAdminPartner(id,active){
+  try{await api('/api/admin/partners/'+id,{method:'PATCH',body:JSON.stringify({active})});await loadAdminPartners();toast(active?'Partenaire publié.':'Partenaire masqué.');}
+  catch(e){toast(e.message,true);}
+}
+async function renameAdminPartner(id){
+  let current='';
+  try{const d=await api('/api/admin/partners');current=(d.partners||[]).find(p=>Number(p.id)===Number(id))?.name||'';}catch{}
+  const name=prompt('Nom du partenaire :',current);if(name===null)return;
+  if(!name.trim())return toast('Le nom est obligatoire.',true);
+  try{await api('/api/admin/partners/'+id,{method:'PATCH',body:JSON.stringify({name:name.trim()})});await loadAdminPartners();toast('Partenaire modifié.');}
+  catch(e){toast(e.message,true);}
+}
+async function deleteAdminPartner(id){
+  let name='ce partenaire';
+  try{const d=await api('/api/admin/partners');name=(d.partners||[]).find(p=>Number(p.id)===Number(id))?.name||name;}catch{}
+  if(!confirm('Supprimer « '+name+' » ?'))return;
+  try{await api('/api/admin/partners/'+id,{method:'DELETE'});await loadAdminPartners();toast('Partenaire supprimé.');}
+  catch(e){toast(e.message,true);}
+}
+async function createAdminPartner(e){
+  e.preventDefault();
+  const name=$('partner-name')?.value.trim(),file=$('partner-logo-file')?.files?.[0],active=$('partner-active')?.checked!==false;
+  if(!name||!file)return toast('Indiquez le nom et choisissez un logo.',true);
+  try{
+    const logoUrl=await optimizePartnerImage(file);
+    await api('/api/admin/partners',{method:'POST',body:JSON.stringify({name,logoUrl,active})});
+    e.target.reset();$('partner-active').checked=true;$('partner-preview')?.classList.add('hidden');adminPartnerDraftLogo='';
+    await loadAdminPartners();toast('Partenaire publié avec succès.');
+  }catch(err){toast(err.message,true);}
+}
+
 function showAdminPlaceholder(label){toast(label+' sera disponible dans une prochaine version.');}
 let dashboardRevenueChart=null,dashboardCategoryChart=null;
 function renderDashboardCharts(){if(!window.Chart)return;const labels=[],values=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);labels.push(d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}));values.push(0);}const rc=$('revenueChart');if(rc){if(dashboardRevenueChart)dashboardRevenueChart.destroy();dashboardRevenueChart=new Chart(rc,{type:'line',data:{labels,datasets:[{label:'Billets vendus',data:values,borderColor:'#ff8a00',pointBackgroundColor:'#ff8a00',pointRadius:3,tension:.35}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#b6c6dc',font:{size:9}}}},scales:{x:{ticks:{color:'#7189aa',font:{size:8}},grid:{display:false}},y:{beginAtZero:true,ticks:{color:'#7189aa',font:{size:8}},grid:{color:'#213654'}}}}});}const cc=$('categoryChart');if(cc){const c={Standard:0,VIP:0,VVIP:0,Autre:0};data.payments.forEach(t=>{const k=t.ticket_type||t.type||'Autre';if(c[k]!==undefined)c[k]++;else c.Autre++;});['standard','vip','vvip','other'].forEach((k,i)=>{if($('count-'+k))$('count-'+k).innerText=Object.values(c)[i]||0});if(dashboardCategoryChart)dashboardCategoryChart.destroy();dashboardCategoryChart=new Chart(cc,{type:'doughnut',data:{labels:Object.keys(c),datasets:[{data:Object.values(c),backgroundColor:['#d9e7f6','#c7dcf2','#b3cfe9','#9bbbd8'],borderWidth:0}]},options:{cutout:'67%',plugins:{legend:{display:false}}}});}}
-window.showAdminPlaceholder=showAdminPlaceholder;
+window.showAdminPlaceholder=showAdminPlaceholder;window.loadAdminPartners=loadAdminPartners;window.toggleAdminPartner=toggleAdminPartner;window.renameAdminPartner=renameAdminPartner;window.deleteAdminPartner=deleteAdminPartner;window.createAdminPartner=createAdminPartner;
 
 let adminChatSelected=null,adminAutoRefreshTimer=null;
 async function loadAdminChat(){try{const d=await api('/api/chat/conversations');const el=$('admin-chat-list');if(!el)return;el.innerHTML=(d.conversations||[]).map(c=>`<button onclick="openAdminChat(${c.id})" class="w-full text-left p-3 hover:bg-[#102341] transition"><div class="flex justify-between gap-2"><b class="text-xs text-white">${esc((c.prenom||'')+' '+(c.nom||''))}</b>${c.unread?`<span class="bg-[#ff8a00] text-white rounded-full px-2 py-0.5 text-[9px]">${c.unread}</span>`:''}</div><div class="text-[9px] text-[#7892b5] truncate mt-1">${esc(c.last_message||'Aucun message')}</div></button>`).join('')||'<div class="p-5 text-xs text-[#7892b5]">Aucune conversation.</div>';if(adminChatSelected)await openAdminChat(adminChatSelected);}catch(e){toast(e.message,true)}}
 async function openAdminChat(id){adminChatSelected=id;try{const d=await api(`/api/chat/messages/${id}`);$('admin-chat-header').innerHTML=`${esc((d.organizer.prenom||'')+' '+(d.organizer.nom||''))}<span class="block text-[9px] text-[#7892b5] font-normal mt-1">${esc(d.organizer.email||'')}</span>`;const el=$('admin-chat-messages');el.innerHTML=(d.messages||[]).map(m=>`<div class="flex ${m.sender_role==='ADMIN'?'justify-end':'justify-start'}"><div class="max-w-[75%] rounded-2xl px-4 py-2 ${m.sender_role==='ADMIN'?'bg-[#ff8a00] text-white':'bg-[#0e203e] text-white border border-[#2b4364]'}"><div class="text-xs whitespace-pre-wrap break-words">${esc(m.message)}</div><div class="text-[8px] opacity-70 mt-1">${new Date(m.created_at).toLocaleString('fr-FR')}</div></div></div>`).join('')||'<div class="text-center text-xs text-[#7892b5] mt-20">Aucun message.</div>';el.scrollTop=el.scrollHeight;loadAdminChatListOnly();}catch(e){toast(e.message,true)}}
 async function loadAdminChatListOnly(){try{const d=await api('/api/chat/conversations');const el=$('admin-chat-list');if(!el)return;el.innerHTML=(d.conversations||[]).map(c=>`<button onclick="openAdminChat(${c.id})" class="w-full text-left p-3 hover:bg-[#102341] transition"><div class="flex justify-between gap-2"><b class="text-xs text-white">${esc((c.prenom||'')+' '+(c.nom||''))}</b>${c.unread?`<span class="bg-[#ff8a00] text-white rounded-full px-2 py-0.5 text-[9px]">${c.unread}</span>`:''}</div><div class="text-[9px] text-[#7892b5] truncate mt-1">${esc(c.last_message||'Aucun message')}</div></button>`).join('')||'<div class="p-5 text-xs text-[#7892b5]">Aucune conversation.</div>';}catch{}}
 async function sendAdminChat(e){e.preventDefault();if(!adminChatSelected)return toast('Sélectionnez un organisateur.',true);const input=$('admin-chat-input'),message=input.value.trim();if(!message)return;try{await api(`/api/chat/messages/${adminChatSelected}`,{method:'POST',body:JSON.stringify({message})});input.value='';await openAdminChat(adminChatSelected);}catch(err){toast(err.message,true)}}
-async function loadAdminExtra(t){try{if(t==='cagnottes'){loadAdminCagnottes();}else if(t==='tickets'){const d=await api('/api/admin/payments');$('admin-tickets-list').innerHTML=(d.payments||[]).map(x=>`<tr class="border-b border-[#243b5d]"><td class="p-4 font-mono text-xs">${esc(x.code)}</td><td class="p-4">${esc(x.customer_name)}</td><td class="p-4">${esc(x.event_title)}</td><td class="p-4">${esc(x.ticket_type)}</td><td class="p-4 font-bold">${fmt(x.total_amount)} FCFA</td><td class="p-4">${x.used?'<span class="text-red-400 font-bold">Utilisé</span>':'<span class="text-emerald-400 font-bold">Valide</span>'}</td></tr>`).join('')||'<tr><td colspan="6" class="p-6 text-center text-[#7892b5]">Aucun billet.</td></tr>';}else if(t==='users'){const d=await api('/api/admin/payments'),m={};(d.payments||[]).forEach(x=>{const k=(x.customer_email||'').toLowerCase();if(!k)return;if(!m[k])m[k]={name:x.customer_name,email:x.customer_email,count:0,last:x.created_at};m[k].count++;if(new Date(x.created_at)>new Date(m[k].last))m[k].last=x.created_at});$('admin-users-list').innerHTML=Object.values(m).map(x=>`<tr class="border-b border-[#243b5d]"><td class="p-4 font-bold">${esc(x.name)}</td><td class="p-4">${esc(x.email)}</td><td class="p-4">${x.count}</td><td class="p-4 text-[#7892b5]">${new Date(x.last).toLocaleString('fr-FR')}</td></tr>`).join('')||'<tr><td colspan="4" class="p-6 text-center text-[#7892b5]">Aucun utilisateur.</td></tr>';}else if(t==='logs'){const d=await api('/api/admin/logs');$('admin-logs-list').innerHTML=(d.logs||[]).map(x=>`<tr class="border-b border-[#243b5d]"><td class="p-4 text-xs text-[#7892b5]">${new Date(x.created_at).toLocaleString('fr-FR')}</td><td class="p-4 font-bold">${esc(x.action)}</td><td class="p-4">${esc(x.entity_type||'-')}</td><td class="p-4 text-xs">${esc(JSON.stringify(x.metadata||{}))}</td></tr>`).join('')||'<tr><td colspan="4" class="p-6 text-center text-[#7892b5]">Aucun journal.</td></tr>';}}catch(e){toast(e.message,true)}}
+async function loadAdminExtra(t){try{if(t==='cagnottes'){loadAdminCagnottes();}else if(t==='tickets'){loadAdminFreeEventOptions();const d=await api('/api/admin/payments');$('admin-tickets-list').innerHTML=(d.payments||[]).map(x=>`<tr class="border-b border-[#243b5d]"><td class="p-4 font-mono text-xs">${esc(x.code)}</td><td class="p-4">${esc(x.customer_name)}</td><td class="p-4">${esc(x.event_title)}</td><td class="p-4">${esc(x.ticket_type)}</td><td class="p-4 font-bold">${fmt(x.total_amount)} FCFA</td><td class="p-4">${x.used?'<span class="text-red-400 font-bold">Utilisé</span>':'<span class="text-emerald-400 font-bold">Valide</span>'}</td></tr>`).join('')||'<tr><td colspan="6" class="p-6 text-center text-[#7892b5]">Aucun billet.</td></tr>';}else if(t==='users'){const d=await api('/api/admin/payments'),m={};(d.payments||[]).forEach(x=>{const k=(x.customer_email||'').toLowerCase();if(!k)return;if(!m[k])m[k]={name:x.customer_name,email:x.customer_email,count:0,last:x.created_at};m[k].count++;if(new Date(x.created_at)>new Date(m[k].last))m[k].last=x.created_at});$('admin-users-list').innerHTML=Object.values(m).map(x=>`<tr class="border-b border-[#243b5d]"><td class="p-4 font-bold">${esc(x.name)}</td><td class="p-4">${esc(x.email)}</td><td class="p-4">${x.count}</td><td class="p-4 text-[#7892b5]">${new Date(x.last).toLocaleString('fr-FR')}</td></tr>`).join('')||'<tr><td colspan="4" class="p-6 text-center text-[#7892b5]">Aucun utilisateur.</td></tr>';}else if(t==='logs'){const d=await api('/api/admin/logs');$('admin-logs-list').innerHTML=(d.logs||[]).map(x=>`<tr class="border-b border-[#243b5d]"><td class="p-4 text-xs text-[#7892b5]">${new Date(x.created_at).toLocaleString('fr-FR')}</td><td class="p-4 font-bold">${esc(x.action)}</td><td class="p-4">${esc(x.entity_type||'-')}</td><td class="p-4 text-xs">${esc(JSON.stringify(x.metadata||{}))}</td></tr>`).join('')||'<tr><td colspan="4" class="p-6 text-center text-[#7892b5]">Aucun journal.</td></tr>';}}catch(e){toast(e.message,true)}}
 async function loadAdminCagnottes(){try{const d=await api('/api/admin/cagnottes');const el=$('admin-cagnottes-list');if(!el)return;el.innerHTML=(d.cagnottes||[]).map(c=>{const imgs=Array.isArray(c.images)?c.images:[];return `<div class="border border-[#263d5e] rounded-2xl p-4"><div class="flex gap-3">${imgs.slice(0,3).map(x=>`<img src="${esc(x)}" class="w-16 h-12 object-cover rounded-lg">`).join('')}<div class="flex-1"><div class="font-black text-white">${esc(c.title)}</div><div class="text-[10px] text-[#7892b5] mt-1">${esc(c.status)} • ${fmt(c.total_amount)} FCFA collectés${c.target_amount?` / objectif ${fmt(c.target_amount)} FCFA`:''}</div></div></div><p class="text-xs text-[#9bb0ca] mt-3 whitespace-pre-wrap">${esc(c.description)}</p><div class="flex flex-wrap gap-2 mt-4">${c.status==='BROUILLON'?`<button onclick="launchCagnotte(${c.id})" class="bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-bold">Lancer</button>`:''}${c.status==='PUBLIE'?`<button onclick="stopCagnotte(${c.id})" class="bg-amber-500 text-white px-3 py-2 rounded-lg text-xs font-bold">Terminer</button><button onclick="viewContributions(${c.id})" class="bg-[#213654] text-white px-3 py-2 rounded-lg text-xs font-bold">Contributions</button>`:''}${c.status!=='PUBLIE'?`<button onclick="deleteCagnotte(${c.id})" class="bg-red-500/10 text-red-300 px-3 py-2 rounded-lg text-xs font-bold">Supprimer</button>`:''}</div></div>`}).join('')||'<div class="p-6 text-center text-xs text-[#7892b5]">Aucune cagnotte.</div>';}catch(e){toast(e.message,true)}}
 async function readCagImages(){const files=[...($('cag-images')?.files||[])];if(files.length>6)throw new Error('Maximum 6 images.');return Promise.all(files.map(file=>new Promise((resolve,reject)=>{if(file.size>1500000)return reject(new Error(`Image trop lourde : ${file.name}`));const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Impossible de lire une image.'));r.readAsDataURL(file)})))}
 async function createCagnotte(e){e.preventDefault();try{const images=await readCagImages();await api('/api/admin/cagnottes',{method:'POST',body:JSON.stringify({title:$('cag-title').value,description:$('cag-description').value,targetAmount:Number($('cag-target').value||0),images})});e.target.reset();toast('Cagnotte créée. Vous pouvez maintenant la lancer.');loadAdminCagnottes();}catch(e){toast(e.message,true)}}
@@ -64,3 +157,6 @@ window.sendAdminChat=sendAdminChat;window.openAdminChat=openAdminChat;window.loa
 
 function showAdminNotifications(){loadAdminExtra('logs');switchTab('logs');toast('Notifications : consultez les journaux d’activité.');}
 window.showAdminNotifications=showAdminNotifications;
+
+async function loadAdminFreeEventOptions(){try{const d=await api('/api/admin/events');const s=$('admin-free-event');if(s)s.innerHTML=(d.events||[]).map(e=>`<option value="${e.id}">${esc(e.title)}</option>`).join('')||'<option value="">Aucun événement</option>';}catch(e){}}
+async function generateAdminFreeTicket(){const eventId=Number($('admin-free-event')?.value),ticketType=$('admin-free-type')?.value.trim(),name=$('admin-free-name')?.value.trim()||'Invitation officielle';if(!eventId||!ticketType)return toast('Sélectionnez un événement et un type de ticket.',true);try{const d=await api('/api/admin/tickets/free',{method:'POST',body:JSON.stringify({eventId,ticketType,name})});toast(`Ticket ${d.ticket.code} créé à 0 FCFA`);window.open(API+'/api/tickets/'+encodeURIComponent(d.ticket.code)+'/qr','_blank');await loadAdminExtra('tickets');}catch(e){toast(e.message,true)}}

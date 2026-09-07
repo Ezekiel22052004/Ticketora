@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS events (
   status VARCHAR(20) NOT NULL DEFAULT 'EN_ATTENTE' CHECK (status IN ('BROUILLON','EN_ATTENTE','PUBLIE','REFUSE')),
   ticket_categories JSONB NOT NULL DEFAULT '[]'::jsonb,
   image_url TEXT,
+  event_type VARCHAR(10) NOT NULL DEFAULT 'PAID',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -216,3 +217,27 @@ CREATE INDEX IF NOT EXISTS idx_promo_codes_event ON promo_codes(event_id);
 CREATE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes(code);
 CREATE INDEX IF NOT EXISTS idx_promo_usages_promo ON promo_usages(promo_id,status);
 CREATE INDEX IF NOT EXISTS idx_promo_usages_customer ON promo_usages(promo_id,customer_email,status);
+
+-- TICKETORA V3: comptes participants, suivi des scans, partenaires
+CREATE TABLE IF NOT EXISTS participant_users (
+  id BIGSERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  phone VARCHAR(60) DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES participant_users(id) ON DELETE SET NULL;
+ALTER TABLE contributions ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES participant_users(id) ON DELETE SET NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS issued_by_admin BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_contributions_user ON contributions(user_id);
+
+CREATE TABLE IF NOT EXISTS event_partners (
+  id BIGSERIAL PRIMARY KEY,
+  name VARCHAR(120) NOT NULL,
+  logo_url TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
