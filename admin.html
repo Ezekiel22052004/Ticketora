@@ -115,7 +115,7 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
         <button onclick="switchTab('payments')" id="nav-payments" class="nav-btn ticketora-nav"><i class="fa-regular fa-credit-card text-[12px]"></i><span>Paiements</span></button>
         <button onclick="switchTab('payments')" class="ticketora-nav"><i class="fa-solid fa-right-left text-[12px]"></i><span>Retraits</span></button>
         <button onclick="switchTab('cagnottes')" id="nav-cagnottes" class="nav-btn ticketora-nav"><i class="fa-solid fa-piggy-bank text-[12px]"></i><span>Cagnottes</span></button>
-        <button onclick="switchTab('partners')" id="nav-partners" class="nav-btn ticketora-nav"><i class="fa-solid fa-handshake text-[12px]"></i><span>Partenaires</span></button>
+        <button onclick="switchTab('partners')" id="nav-partners" class="nav-btn ticketora-nav"><i class="fa-solid fa-handshake text-[12px]"></i><span>Partenaires</span></button><button onclick="switchTab('ads')" id="nav-ads" class="nav-btn ticketora-nav"><i class="fa-solid fa-bullhorn text-[12px]"></i><span>Publicités</span></button>
         <button onclick="switchTab('scanner')" id="nav-scanner" class="nav-btn ticketora-nav"><i class="fa-solid fa-user-check text-[12px]"></i><span>Agents / Scanners</span></button>
         <div class="ticketora-section-title mt-5">SYSTÈME</div>
         <button onclick="switchTab('logs')" class="ticketora-nav"><i class="fa-regular fa-clock text-[12px]"></i><span>Journaux d'activité</span></button>
@@ -172,6 +172,7 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
                                 <th class="p-4">Catégorie</th>
                                 <th class="p-4">Prix</th>
                                 <th class="p-4">Capacité</th>
+                                <th class="p-4">❤️ J’aime</th>
                                 <th class="p-4">Statut</th>
                                 <th class="p-4 text-right">Actions</th>
                             </tr>
@@ -340,7 +341,22 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
   </div>
 </section>
 
-<section id="tab-cagnottes" class="tab-content hidden space-y-6">
+<section id="tab-ads" class="tab-content hidden space-y-6">
+ <div><h1 class="text-2xl font-extrabold">Publicités</h1><p class="text-sm text-[#7892b5]">Gérez la bannière publicitaire affichée en bas de la page utilisateur. Ajoutez une image, un lien et une période de diffusion.</p></div>
+ <div class="grid xl:grid-cols-[.8fr_1.2fr] gap-5">
+  <div class="ticketora-panel p-5"><h2 class="font-extrabold text-lg">Ajouter une publicité</h2>
+   <form id="ad-form" onsubmit="createAdminAd(event)" class="space-y-4 mt-5">
+    <input id="ad-title" maxlength="160" class="w-full rounded-xl px-4 py-3" placeholder="Titre / nom de la publicité">
+    <input id="ad-link" type="url" class="w-full rounded-xl px-4 py-3" placeholder="Lien de destination (https://...)">
+    <input id="ad-image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" required class="w-full text-xs text-slate-300">
+    <div class="grid grid-cols-2 gap-3"><input id="ad-start" type="datetime-local" class="w-full rounded-xl px-3 py-3"><input id="ad-end" type="datetime-local" class="w-full rounded-xl px-3 py-3"></div>
+    <label class="flex items-center gap-2 text-sm font-bold"><input id="ad-active" type="checkbox" checked> Publier immédiatement</label>
+    <button class="w-full bg-[#ff8a00] text-white font-bold py-3 rounded-xl">Ajouter la publicité</button>
+   </form>
+  </div>
+  <div class="ticketora-panel p-5"><div class="flex items-center justify-between gap-3 mb-4"><div><h2 class="font-extrabold text-lg">Publicités enregistrées</h2><p class="text-xs text-[#7892b5] mt-1">Publiez, masquez, modifiez ou supprimez.</p></div><button onclick="loadAdminAds()" class="text-xs font-bold text-[#ff9a1f]">Actualiser</button></div><div id="admin-ads-list" class="space-y-3"></div></div>
+ </div>
+</section>  <section id="tab-cagnottes" class="tab-content hidden space-y-6">
 <div><h1 class="text-2xl font-extrabold">Cagnottes</h1><p class="text-sm text-[#7892b5]">Créez une campagne, ajoutez plusieurs images puis lancez-la pour la rendre visible au public.</p></div>
 <div class="grid lg:grid-cols-[.8fr_1.2fr] gap-4">
 <div class="ticketora-panel"><h3>Créer une cagnotte</h3><form id="cagnotte-form" onsubmit="createCagnotte(event)" class="space-y-3 mt-4"><input id="cag-title" required class="w-full rounded-xl px-4 py-3" placeholder="Titre de la cagnotte"><textarea id="cag-description" required rows="6" class="w-full rounded-xl px-4 py-3" placeholder="Description"></textarea><input id="cag-target" type="number" min="0" class="w-full rounded-xl px-4 py-3" placeholder="Objectif en FCFA (facultatif)"><input id="cag-images" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple class="w-full text-xs text-slate-300"><p class="text-[10px] text-[#7892b5]">Jusqu'à 6 images, 1,5 Mo maximum par image.</p><button class="w-full bg-[#ff8a00] text-white py-3 rounded-xl font-black">Créer la cagnotte</button></form></div>

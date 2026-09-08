@@ -199,6 +199,8 @@ async function ensureV3Tables(){
   await pool.query('CREATE INDEX IF NOT EXISTS idx_event_likes_event ON event_likes(event_id)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_event_likes_visitor ON event_likes(visitor_key)');
   await pool.query(`CREATE TABLE IF NOT EXISTS event_partners (id BIGSERIAL PRIMARY KEY,name VARCHAR(120) NOT NULL,logo_url TEXT NOT NULL,active BOOLEAN NOT NULL DEFAULT TRUE,sort_order INTEGER NOT NULL DEFAULT 0)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS site_ads (id BIGSERIAL PRIMARY KEY,title VARCHAR(160) NOT NULL DEFAULT '',image_url TEXT NOT NULL,link_url TEXT NOT NULL DEFAULT '',active BOOLEAN NOT NULL DEFAULT TRUE,start_at TIMESTAMPTZ,end_at TIMESTAMPTZ,sort_order INTEGER NOT NULL DEFAULT 0,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_site_ads_active_dates ON site_ads(active,start_at,end_at)');
   // Partenaire de base : Tchin. Le logo est servi depuis le frontend.
   await pool.query(`INSERT INTO event_partners(name,logo_url,active,sort_order)
     SELECT 'Tchin','tchin-logo.jpeg',TRUE,0
@@ -229,9 +231,9 @@ app.get('/api/participants/me',requireParticipant,asyncRoute(async(req,res)=>{co
 app.get('/api/participants/history',requireParticipant,asyncRoute(async(req,res)=>{
  const id=req.session.user.id;
  const [t,c,o]=await Promise.all([
-   pool.query('SELECT * FROM tickets WHERE order_id IN (SELECT id FROM orders WHERE user_id=$1) OR LOWER(customer_email)=(SELECT LOWER(email) FROM participant_users WHERE id=$1) ORDER BY id DESC',[id]),
+   pool.query('SELECT * FROM tickets WHERE issued_by_admin=false AND (order_id IN (SELECT id FROM orders WHERE user_id=$1) OR LOWER(customer_email)=(SELECT LOWER(email) FROM participant_users WHERE id=$1)) ORDER BY id DESC',[id]),
    pool.query('SELECT c.*,g.title FROM contributions c JOIN cagnottes g ON g.id=c.cagnotte_id WHERE c.user_id=$1 OR LOWER(c.contributor_email)=(SELECT LOWER(email) FROM participant_users WHERE id=$1) ORDER BY c.id DESC',[id]),
-   pool.query('SELECT id,reference,event_id,ticket_type,customer_name,total_amount,status,created_at,paid_at FROM orders WHERE user_id=$1 OR LOWER(customer_email)=(SELECT LOWER(email) FROM participant_users WHERE id=$1) ORDER BY id DESC',[id])
+   pool.query('SELECT o.id,o.reference,o.event_id,o.ticket_type,o.customer_name,o.total_amount,o.status,o.created_at,o.paid_at FROM orders o WHERE NOT EXISTS (SELECT 1 FROM tickets t0 WHERE t0.order_id=o.id AND t0.issued_by_admin=true) AND (o.user_id=$1 OR LOWER(o.customer_email)=(SELECT LOWER(email) FROM participant_users WHERE id=$1)) ORDER BY o.id DESC',[id])
  ]);
  res.json({success:true,tickets:t.rows,contributions:c.rows,orders:o.rows});
 }));
@@ -278,7 +280,7 @@ app.get('/api/events',asyncRoute(async(req,res)=>{
  let order='e.date ASC,e.id DESC';
  if(sort==='trending')order=`(COALESCE(l.like_count,0)*5 + COALESCE(s.sold_count,0)*3 + CASE WHEN e.date<=CURRENT_DATE+INTERVAL '7 days' THEN 4 ELSE 0 END + CASE WHEN e.created_at>=NOW()-INTERVAL '7 days' THEN 2 ELSE 0 END) DESC,e.date ASC,e.id DESC`;
  else if(sort==='likes')order='COALESCE(l.like_count,0) DESC,e.date ASC,e.id DESC';
- const r=await pool.query(`WITH like_stats AS (SELECT event_id,COUNT(*)::int like_count FROM event_likes GROUP BY event_id), sold_stats AS (SELECT event_id,COUNT(*)::int sold_count FROM tickets GROUP BY event_id)
+ const r=await pool.query(`WITH like_stats AS (SELECT event_id,COUNT(*)::int like_count FROM event_likes GROUP BY event_id), sold_stats AS (SELECT event_id,COUNT(*)::int sold_count FROM tickets WHERE issued_by_admin=false GROUP BY event_id)
  SELECT e.*,COALESCE(o.status='VALIDE',false) AS organizer_verified,COALESCE(s.sold_count,0)::int sold_count,COALESCE(l.like_count,0)::int like_count,EXISTS(SELECT 1 FROM event_likes el WHERE el.event_id=e.id AND el.visitor_key=$${likeParam}) AS liked,
  CASE WHEN e.capacity>0 AND COALESCE(s.sold_count,0)>=e.capacity THEN true
  WHEN jsonb_typeof(e.ticket_categories)='array' AND jsonb_array_length(e.ticket_categories)>0 AND COALESCE(s.sold_count,0)>=COALESCE((SELECT SUM((x->>'total_stock')::int) FROM jsonb_array_elements(e.ticket_categories) x),0) THEN true ELSE false END AS sold_out
@@ -286,7 +288,7 @@ app.get('/api/events',asyncRoute(async(req,res)=>{
  res.json({success:true,events:r.rows});
 }));
 app.post('/api/events/:id/like',asyncRoute(async(req,res)=>{const id=Number(req.params.id),vk=visitorKey(req);if(!Number.isInteger(id)||!vk)return res.status(400).json({success:false,message:'Identifiant visiteur requis.'});const ev=await pool.query("SELECT id FROM events WHERE id=$1 AND status='PUBLIE' AND date>=CURRENT_DATE",[id]);if(!ev.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});const existing=await pool.query('SELECT 1 FROM event_likes WHERE event_id=$1 AND visitor_key=$2',[id,vk]);let liked;if(existing.rows.length){await pool.query('DELETE FROM event_likes WHERE event_id=$1 AND visitor_key=$2',[id,vk]);liked=false;}else{await pool.query('INSERT INTO event_likes(event_id,visitor_key) VALUES($1,$2) ON CONFLICT DO NOTHING',[id,vk]);liked=true;}const c=await pool.query('SELECT COUNT(*)::int like_count FROM event_likes WHERE event_id=$1',[id]);res.json({success:true,liked,like_count:c.rows[0].like_count});}));
-app.get('/api/organizers/events',requireOrg,asyncRoute(async(req,res)=>{const r=await pool.query('SELECT e.*,COALESCE((SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id),0)::int sold_count FROM events e WHERE e.org_id=$1 ORDER BY e.id DESC',[req.session.user.id]);res.json({success:true,events:r.rows});}));
+app.get('/api/organizers/events',requireOrg,asyncRoute(async(req,res)=>{const r=await pool.query('SELECT e.*,COALESCE((SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id AND t.issued_by_admin=false),0)::int sold_count FROM events e WHERE e.org_id=$1 ORDER BY e.id DESC',[req.session.user.id]);res.json({success:true,events:r.rows});}));
 app.post('/api/organizers/events',requireOrg,asyncRoute(async(req,res)=>{
   const {title,category,date,location,venueName,city,address,latitude,longitude,description,price,capacity,ticketCategories,imageUrl,eventType}=req.body;const type=String(eventType||'PAID').toUpperCase()==='FREE'?'FREE':'PAID';const p=positiveInt(price),cap=positiveInt(capacity),cats=normalizeCats(ticketCategories);if(!clean(title)||!date||!clean(location)||p===null||cap===null||(type==='PAID'&&!cats.length)||(type==='FREE'&&cap===0))return res.status(400).json({success:false,message:'Informations événement/catégories incomplètes.'});
   const primary=cats[0]?.price??p;const image=clean(imageUrl,1800000);if(image && !/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(image))return res.status(400).json({success:false,message:'Affiche invalide.'});const lat=latitude===null||latitude===undefined||latitude===''?null:Number(latitude),lon=longitude===null||longitude===undefined||longitude===''?null:Number(longitude);if((lat!==null&&(!Number.isFinite(lat)||lat<-90||lat>90))||(lon!==null&&(!Number.isFinite(lon)||lon<-180||lon>180)))return res.status(400).json({success:false,message:'Coordonnées GPS invalides.'});const r=await pool.query(`INSERT INTO events(org_id,title,category,date,location,venue_name,city,address,latitude,longitude,description,price,capacity,status,ticket_categories,max_tickets_per_order,image_url,event_type) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'EN_ATTENTE',$14::jsonb,$15,$16,$17) RETURNING *`,[req.session.user.id,clean(title),clean(category||'Concert',100),date,clean(location||venueName||city,255),clean(venueName,255),clean(city,120),clean(address,500),lat,lon,clean(description,3000),primary,cap,JSON.stringify(cats),Math.max(1,Math.min(50,Number(req.body.maxTicketsPerOrder)||10)),image||null,type]);res.status(201).json({success:true,event:r.rows[0],message:'Événement enregistré. Il attend la validation administrateur.'});
@@ -308,7 +310,7 @@ app.get('/api/admin/organizers',requireAdmin,asyncRoute(async(req,res)=>{
 app.post('/api/admin/organizers/:id/approve',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query("UPDATE organizers SET status='VALIDE',updated_at=NOW() WHERE id=$1 RETURNING id,status",[req.params.id]);if(!r.rows.length)return res.status(404).json({success:false});res.json({success:true,organizer:r.rows[0]});}));
 app.post('/api/admin/organizers/:id/reject',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query("UPDATE organizers SET status='REFUSE',updated_at=NOW() WHERE id=$1 RETURNING id,status",[req.params.id]);if(!r.rows.length)return res.status(404).json({success:false});res.json({success:true});}));
 app.delete('/api/admin/organizers/:id',requireAdmin,asyncRoute(async(req,res)=>{await pool.query('DELETE FROM organizers WHERE id=$1',[req.params.id]);res.json({success:true});}));
-app.get('/api/admin/events',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query(`SELECT e.*,o.nom AS organizer_name,COALESCE((SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id),0)::int sold_count FROM events e LEFT JOIN organizers o ON o.id=e.org_id ORDER BY e.id DESC`);res.json({success:true,events:r.rows});}));
+app.get('/api/admin/events',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query(`SELECT e.*,o.nom AS organizer_name,COALESCE((SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id AND t.issued_by_admin=false),0)::int sold_count,COALESCE((SELECT COUNT(*) FROM event_likes l WHERE l.event_id=e.id),0)::int like_count FROM events e LEFT JOIN organizers o ON o.id=e.org_id ORDER BY e.id DESC`);res.json({success:true,events:r.rows});}));
 app.post('/api/admin/events',requireAdmin,asyncRoute(async(req,res)=>{
   const {title,category,date,price,capacity,imageUrl}=req.body;const p=positiveInt(price),cap=positiveInt(capacity);
   if(!clean(title)||!date||p===null||cap===null)return res.status(400).json({success:false,message:'Données invalides.'});
@@ -478,14 +480,14 @@ app.get('/api/organizers/stats',requireOrg,asyncRoute(async(req,res)=>{
   const id=req.session.user.id;
   const [e,t,p,daily,top]=await Promise.all([
     pool.query('SELECT * FROM events WHERE org_id=$1 ORDER BY id DESC',[id]),
-    pool.query('SELECT * FROM tickets WHERE org_id=$1 ORDER BY id DESC',[id]),
+    pool.query('SELECT * FROM tickets WHERE org_id=$1 AND issued_by_admin=false ORDER BY id DESC',[id]),
     pool.query('SELECT * FROM payouts WHERE org_id=$1 ORDER BY id DESC',[id]),
     pool.query(`SELECT gs::date AS day,COUNT(t.id)::int AS tickets,COALESCE(SUM(t.organizer_amount),0)::int AS revenue,COUNT(t.id) FILTER (WHERE t.used)::int AS used
       FROM generate_series(CURRENT_DATE-29,CURRENT_DATE,INTERVAL '1 day') gs
-      LEFT JOIN tickets t ON t.org_id=$1 AND t.created_at::date=gs::date
+      LEFT JOIN tickets t ON t.org_id=$1 AND t.issued_by_admin=false AND t.created_at::date=gs::date
       GROUP BY gs::date ORDER BY day`,[id]),
     pool.query(`SELECT e.id,e.title,COUNT(t.id)::int tickets,COALESCE(SUM(t.organizer_amount),0)::int revenue,COUNT(t.id) FILTER (WHERE t.used)::int used
-      FROM events e LEFT JOIN tickets t ON t.event_id=e.id WHERE e.org_id=$1 GROUP BY e.id,e.title ORDER BY tickets DESC,revenue DESC LIMIT 8`,[id])
+      FROM events e LEFT JOIN tickets t ON t.event_id=e.id AND t.issued_by_admin=false WHERE e.org_id=$1 GROUP BY e.id,e.title ORDER BY tickets DESC,revenue DESC LIMIT 8`,[id])
   ]);
   const net=t.rows.reduce((s,x)=>s+Number(x.organizer_amount||0),0);
   const pending=p.rows.filter(x=>x.status==='EN_ATTENTE').reduce((s,x)=>s+Number(x.amount||0),0);
@@ -613,19 +615,19 @@ app.post('/api/admin/withdrawals/:id/status',requireAdmin,asyncRoute(async(req,r
   res.json({success:true,withdrawal:r.rows[0]});
 }));
 app.get('/api/admin/logs',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query('SELECT * FROM audit_logs ORDER BY id DESC LIMIT 200');res.json({success:true,logs:r.rows});}));
-app.get('/api/admin/payments',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query(`SELECT t.*,o.reference,o.tchin_token,o.tchin_status FROM tickets t JOIN orders o ON o.id=t.order_id ORDER BY t.id DESC`);res.json({success:true,payments:r.rows});}));
+app.get('/api/admin/payments',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query(`SELECT t.*,o.reference,o.tchin_token,o.tchin_status FROM tickets t JOIN orders o ON o.id=t.order_id WHERE t.issued_by_admin=false ORDER BY t.id DESC`);res.json({success:true,payments:r.rows});}));
 app.get('/api/admin/overview',requireAdmin,asyncRoute(async(req,res)=>{
   const [rev,tix,ev,pending,sales,orgs,users,paystats,daily,cats]=await Promise.all([
-    pool.query('SELECT COALESCE(SUM(admin_commission),0)::int revenue,COALESCE(SUM(total_amount),0)::int volume FROM tickets'),
-    pool.query('SELECT COUNT(*)::int n FROM tickets'),
+    pool.query('SELECT COALESCE(SUM(admin_commission),0)::int revenue,COALESCE(SUM(total_amount),0)::int volume FROM tickets WHERE issued_by_admin=false'),
+    pool.query('SELECT COUNT(*)::int n FROM tickets WHERE issued_by_admin=false'),
     pool.query("SELECT COUNT(*)::int n FROM events WHERE status='PUBLIE'"),
     pool.query("SELECT COUNT(*)::int n FROM organizers WHERE status='EN_ATTENTE'"),
-    pool.query('SELECT t.*,o.reference FROM tickets t JOIN orders o ON o.id=t.order_id ORDER BY t.id DESC LIMIT 20'),
+    pool.query('SELECT t.*,o.reference FROM tickets t JOIN orders o ON o.id=t.order_id WHERE t.issued_by_admin=false ORDER BY t.id DESC LIMIT 20'),
     pool.query("SELECT COUNT(*)::int n FROM organizers WHERE status='VALIDE'"),
-    pool.query("SELECT COUNT(DISTINCT LOWER(customer_email))::int n FROM orders WHERE customer_email IS NOT NULL AND customer_email<>''"),
+    pool.query("SELECT COUNT(DISTINCT LOWER(o.customer_email))::int n FROM orders o WHERE o.customer_email IS NOT NULL AND o.customer_email<>'' AND NOT EXISTS (SELECT 1 FROM tickets t WHERE t.order_id=o.id AND t.issued_by_admin=true)"),
     pool.query("SELECT COUNT(*) FILTER (WHERE tchin_status='pending')::int pending, COUNT(*) FILTER (WHERE tchin_status='completed')::int completed, COUNT(*) FILTER (WHERE tchin_status='failed')::int failed, COUNT(*) FILTER (WHERE tchin_status='refunded')::int refunded FROM orders"),
-    pool.query(`SELECT gs::date AS day,COUNT(t.id)::int tickets,COALESCE(SUM(t.admin_commission),0)::int revenue,COALESCE(SUM(t.total_amount),0)::int volume FROM generate_series(CURRENT_DATE-29,CURRENT_DATE,INTERVAL '1 day') gs LEFT JOIN tickets t ON t.created_at::date=gs::date GROUP BY gs::date ORDER BY day`),
-    pool.query(`SELECT ticket_type,COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int volume FROM tickets GROUP BY ticket_type ORDER BY tickets DESC LIMIT 8`)
+    pool.query(`SELECT gs::date AS day,COUNT(t.id)::int tickets,COALESCE(SUM(t.admin_commission),0)::int revenue,COALESCE(SUM(t.total_amount),0)::int volume FROM generate_series(CURRENT_DATE-29,CURRENT_DATE,INTERVAL '1 day') gs LEFT JOIN tickets t ON t.issued_by_admin=false AND t.created_at::date=gs::date GROUP BY gs::date ORDER BY day`),
+    pool.query(`SELECT ticket_type,COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int volume FROM tickets WHERE issued_by_admin=false GROUP BY ticket_type ORDER BY tickets DESC LIMIT 8`)
   ]);
   res.json({success:true,stats:{revenue:Number(rev.rows[0].revenue),volume:Number(rev.rows[0].volume),tickets:tix.rows[0].n,events:ev.rows[0].n,pendingOrganizers:pending.rows[0].n,organizers:orgs.rows[0].n,users:users.rows[0].n,payments:{pending:paystats.rows[0].pending||0,completed:paystats.rows[0].completed||0,failed:paystats.rows[0].failed||0,refunded:paystats.rows[0].refunded||0}},sales:sales.rows,daily:daily.rows.map(x=>({day:x.day,tickets:Number(x.tickets),revenue:Number(x.revenue),volume:Number(x.volume)})),categories:cats.rows.map(x=>({ticket_type:x.ticket_type,tickets:Number(x.tickets),volume:Number(x.volume)}))});
 }));
@@ -800,33 +802,33 @@ app.get('/api/cagnottes/contributions/:token/status',asyncRoute(async(req,res)=>
 
 // ---------- PARTICIPANTS / EXPORTS / RAPPORTS V3 ----------
 app.get('/api/organizers/events/:id/participants',requireOrg,asyncRoute(async(req,res)=>{
- const id=Number(req.params.id);const r=await pool.query(`SELECT t.id,t.code AS ticket_id,t.customer_name,t.customer_email,t.ticket_type,t.total_amount,t.used,t.used_at,t.created_at FROM tickets t WHERE t.event_id=$1 AND t.org_id=$2 ORDER BY t.id DESC`,[id,req.session.user.id]);res.json({success:true,participants:r.rows});
+ const id=Number(req.params.id);const r=await pool.query(`SELECT t.id,t.code AS ticket_id,t.customer_name,t.customer_email,t.ticket_type,t.total_amount,t.used,t.used_at,t.created_at FROM tickets t WHERE t.event_id=$1 AND t.org_id=$2 AND t.issued_by_admin=false ORDER BY t.id DESC`,[id,req.session.user.id]);res.json({success:true,participants:r.rows});
 }));
 app.get('/api/organizers/events/:id/report',requireOrg,asyncRoute(async(req,res)=>{
  const id=Number(req.params.id);const ev=await pool.query('SELECT * FROM events WHERE id=$1 AND org_id=$2',[id,req.session.user.id]);if(!ev.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});
  const [r,cats]=await Promise.all([
-  pool.query(`SELECT COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int revenue,COALESCE(SUM(organizer_amount),0)::int organizer_revenue,COALESCE(SUM(admin_commission),0)::int commission,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1`,[id]),
-  pool.query(`SELECT ticket_type,COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int revenue,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1 GROUP BY ticket_type ORDER BY tickets DESC`,[id])
+  pool.query(`SELECT COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int revenue,COALESCE(SUM(organizer_amount),0)::int organizer_revenue,COALESCE(SUM(admin_commission),0)::int commission,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1 AND issued_by_admin=false`,[id]),
+  pool.query(`SELECT ticket_type,COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int revenue,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1 AND issued_by_admin=false GROUP BY ticket_type ORDER BY tickets DESC`,[id])
  ]);const x=r.rows[0];const tickets=Number(x.tickets),validated=Number(x.validated),revenue=Number(x.revenue);res.json({success:true,event:ev.rows[0],report:{tickets_sold:tickets,validated,absent:Math.max(0,tickets-validated),attendance_rate:tickets?Math.round(validated/tickets*100):0,revenue,organizer_revenue:Number(x.organizer_revenue),commission:Number(x.commission),average_ticket:tickets?Math.round(revenue/tickets):0,by_category:cats.rows.map(v=>({...v,tickets:Number(v.tickets),revenue:Number(v.revenue),validated:Number(v.validated) }))}});
 }));
 function csvCell(v){const s=String(v??'');return '"'+s.replace(/"/g,'""')+'"';}
 async function exportTickets(req,res,scope){
- const id=req.params.id?Number(req.params.id):null;let q=`SELECT t.code AS ticket_id,t.customer_name AS participant,t.customer_email,t.ticket_type,t.total_amount,t.used AS validated,t.used_at,t.created_at,e.title AS event,e.date FROM tickets t JOIN events e ON e.id=t.event_id`;const args=[];
- if(scope==='org'){q+=' WHERE t.org_id=$1';args.push(req.session.user.id);if(id){q+=' AND t.event_id=$2';args.push(id);}} else if(id){q+=' WHERE t.event_id=$1';args.push(id);}q+=' ORDER BY t.id DESC';
+ const id=req.params.id?Number(req.params.id):null;let q=`SELECT t.code AS ticket_id,t.customer_name AS participant,t.customer_email,t.ticket_type,t.total_amount,t.used AS validated,t.used_at,t.created_at,e.title AS event,e.date FROM tickets t JOIN events e ON e.id=t.event_id WHERE t.issued_by_admin=false`;const args=[];
+ if(scope==='org'){q+=' AND t.org_id=$1';args.push(req.session.user.id);if(id){q+=' AND t.event_id=$2';args.push(id);}} else if(id){q+=' AND t.event_id=$1';args.push(id);}q+=' ORDER BY t.id DESC';
  const r=await pool.query(q,args);const headers=['ticket_id','participant','customer_email','ticket_type','total_amount','validated','used_at','created_at','event','date'];res.type('text/csv; charset=utf-8').set('Content-Disposition','attachment; filename="ticketora-tickets.csv"').send('\ufeff'+headers.join(';')+'\n'+r.rows.map(x=>headers.map(h=>csvCell(x[h])).join(';')).join('\n'));
 }
 app.get('/api/organizers/export/tickets',requireOrg,asyncRoute(async(req,res)=>exportTickets(req,res,'org')));
 app.get('/api/organizers/events/:id/export',requireOrg,asyncRoute(async(req,res)=>exportTickets(req,res,'org')));
 app.get('/api/admin/export/tickets',requireAdmin,asyncRoute(async(req,res)=>exportTickets(req,res,'admin')));
 app.get('/api/admin/events/:id/report',requireAdmin,asyncRoute(async(req,res)=>{
- const id=Number(req.params.id);const ev=await pool.query('SELECT * FROM events WHERE id=$1',[id]);if(!ev.rows.length)return res.status(404).json({success:false});const r=await pool.query(`SELECT COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int revenue,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1`,[id]);const x=r.rows[0];res.json({success:true,event:ev.rows[0],report:{tickets_sold:Number(x.tickets),validated:Number(x.validated),absent:Math.max(0,Number(x.tickets)-Number(x.validated)),revenue:Number(x.revenue)}});
+ const id=Number(req.params.id);const ev=await pool.query('SELECT * FROM events WHERE id=$1',[id]);if(!ev.rows.length)return res.status(404).json({success:false});const r=await pool.query(`SELECT COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int revenue,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1 AND issued_by_admin=false`,[id]);const x=r.rows[0];res.json({success:true,event:ev.rows[0],report:{tickets_sold:Number(x.tickets),validated:Number(x.validated),absent:Math.max(0,Number(x.tickets)-Number(x.validated)),revenue:Number(x.revenue)}});
 }));
 app.post('/api/admin/tickets/free',requireAdmin,asyncRoute(async(req,res)=>{
  const eventId=Number(req.body.eventId),ticketType=clean(req.body.ticketType,120),name=clean(req.body.name||'Invitation officielle',255),email=clean(req.body.email||'admin@ticketora.local',255).toLowerCase();if(!eventId||!ticketType)return res.status(400).json({success:false,message:'Événement et type de billet obligatoires.'});
  const ev=await pool.query('SELECT * FROM events WHERE id=$1',[eventId]);if(!ev.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});
  const ref='ADM-'+crypto.randomBytes(5).toString('hex').toUpperCase(),c=await pool.connect();try{await c.query('BEGIN');const o=await c.query(`INSERT INTO orders(reference,event_id,ticket_type,customer_name,customer_email,base_amount,discount_amount,total_amount,status) VALUES($1,$2,$3,$4,$5,0,0,0,'PAID') RETURNING id`,[ref,eventId,ticketType,name,email]);let code=null;for(let i=0;i<10;i++){const q=fmtTicket();if(!(await c.query('SELECT 1 FROM tickets WHERE code=$1',[q])).rows.length){code=q;break;}}if(!code)throw new Error('Impossible de générer le ticket.');const t=await c.query(`INSERT INTO tickets(order_id,code,event_id,org_id,event_title,event_date,event_location,ticket_type,customer_name,customer_email,total_amount,admin_commission,organizer_amount,commission_rate,issued_by_admin) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,0,0,0,true) RETURNING *`,[o.rows[0].id,code,eventId,ev.rows[0].org_id,ev.rows[0].title,ev.rows[0].date,ev.rows[0].location,ticketType,name,email]);await c.query('COMMIT');res.status(201).json({success:true,ticket:t.rows[0]});}catch(e){try{await c.query('ROLLBACK')}catch{};throw e}finally{c.release();}
 }));
-app.get('/api/events/partners',asyncRoute(async(req,res)=>{const r=await pool.query('SELECT id,name,logo_url,active FROM event_partners WHERE active=true ORDER BY sort_order,id');res.json({success:true,partners:r.rows});}));
+app.get('/api/events/partners',asyncRoute(async(req,res)=>{await ensureV3Tables();const r=await pool.query('SELECT id,name,logo_url,active FROM event_partners WHERE active=true ORDER BY sort_order,id');res.json({success:true,partners:r.rows});}));
 app.get('/api/admin/partners',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query('SELECT id,name,logo_url,active,sort_order FROM event_partners ORDER BY sort_order,id');res.json({success:true,partners:r.rows});}));
 app.post('/api/admin/partners',requireAdmin,asyncRoute(async(req,res)=>{
   const name=clean(req.body.name,120),logo=String(req.body.logoUrl||'').trim();
@@ -857,6 +859,13 @@ app.delete('/api/admin/partners/:id',requireAdmin,asyncRoute(async(req,res)=>{
   if(!r.rows.length)return res.status(404).json({success:false,message:'Partenaire introuvable.'});
   res.json({success:true});
 }));
+
+// ---------- PUBLICITÉS ADMIN ----------
+app.get('/api/ads',asyncRoute(async(req,res)=>{await ensureV3Tables();const r=await pool.query(`SELECT id,title,image_url,link_url FROM site_ads WHERE active=true AND (start_at IS NULL OR start_at<=NOW()) AND (end_at IS NULL OR end_at>=NOW()) ORDER BY sort_order,id`);res.json({success:true,ads:r.rows});}));
+app.get('/api/admin/ads',requireAdmin,asyncRoute(async(req,res)=>{await ensureV3Tables();const r=await pool.query('SELECT * FROM site_ads ORDER BY sort_order,id');res.json({success:true,ads:r.rows});}));
+app.post('/api/admin/ads',requireAdmin,asyncRoute(async(req,res)=>{await ensureV3Tables();const title=clean(req.body.title,160),image=String(req.body.imageUrl||'').trim(),link=String(req.body.linkUrl||'').trim();if(!image)return res.status(400).json({success:false,message:'Image obligatoire.'});if(image.length>1800000)return res.status(413).json({success:false,message:'Image trop lourde.'});if(!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(image)&&!/^https?:\/\//i.test(image))return res.status(400).json({success:false,message:'Image invalide.'});if(link&&!/^https?:\/\//i.test(link))return res.status(400).json({success:false,message:'Lien public invalide.'});const start=req.body.startAt?new Date(req.body.startAt):null,end=req.body.endAt?new Date(req.body.endAt):null;const next=await pool.query('SELECT COALESCE(MAX(sort_order),0)+1 n FROM site_ads');const r=await pool.query('INSERT INTO site_ads(title,image_url,link_url,active,start_at,end_at,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',[title,image,link,req.body.active!==false,start&&Number.isFinite(start.getTime())?start:null,end&&Number.isFinite(end.getTime())?end:null,Number(next.rows[0].n)||1]);res.status(201).json({success:true,ad:r.rows[0]});}));
+app.patch('/api/admin/ads/:id',requireAdmin,asyncRoute(async(req,res)=>{await ensureV3Tables();const id=Number(req.params.id),fields=[],values=[],push=(f,v)=>{fields.push(f+'=$'+(values.length+1));values.push(v)};if(req.body.title!==undefined)push('title',clean(req.body.title,160));if(req.body.imageUrl!==undefined)push('image_url',String(req.body.imageUrl||'').trim());if(req.body.linkUrl!==undefined)push('link_url',String(req.body.linkUrl||'').trim());if(req.body.active!==undefined)push('active',!!req.body.active);if(req.body.startAt!==undefined)push('start_at',req.body.startAt?new Date(req.body.startAt):null);if(req.body.endAt!==undefined)push('end_at',req.body.endAt?new Date(req.body.endAt):null);push('updated_at',new Date());const r=await pool.query(`UPDATE site_ads SET ${fields.join(',')} WHERE id=$${values.length+1} RETURNING *`,[...values,id]);if(!r.rows.length)return res.status(404).json({success:false,message:'Publicité introuvable.'});res.json({success:true,ad:r.rows[0]});}));
+app.delete('/api/admin/ads/:id',requireAdmin,asyncRoute(async(req,res)=>{await ensureV3Tables();const r=await pool.query('DELETE FROM site_ads WHERE id=$1 RETURNING id',[Number(req.params.id)]);if(!r.rows.length)return res.status(404).json({success:false,message:'Publicité introuvable.'});res.json({success:true});}));
 
 app.get('/api/cagnottes/contributions/verify/:reference',asyncRoute(async(req,res)=>{const r=await pool.query(`SELECT c.reference,c.amount,c.status,c.created_at,g.title FROM contributions c JOIN cagnottes g ON g.id=c.cagnotte_id WHERE c.reference=$1`,[clean(req.params.reference,80).toUpperCase()]);if(!r.rows.length)return res.status(404).json({success:false,status:'INVALID'});res.json({success:true,verification:r.rows[0]});}));
 // ---------- QR ----------

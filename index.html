@@ -48,6 +48,19 @@
 .feature-card{background:#fff;border:1px solid #e5e7eb;border-radius:20px;padding:22px;transition:.3s ease}.feature-card:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(15,23,42,.08)}.feature-card i{width:42px;height:42px;border-radius:12px;background:#fff7ed;color:#f97316;display:flex;align-items:center;justify-content:center;margin-bottom:15px}.feature-card h3{font-weight:900;color:#071a3b}.feature-card p{font-size:13px;color:#64748b;margin-top:5px;line-height:1.6}
 .faq-item{border:1px solid #e5e7eb;border-radius:16px;padding:0 20px;background:#fff;overflow:hidden}.faq-item summary{cursor:pointer;list-style:none;font-weight:800;color:#071a3b;padding:18px 0;position:relative}.faq-item summary::-webkit-details-marker{display:none}.faq-item summary:after{content:'+';position:absolute;right:0;color:#f97316;font-size:20px}.faq-item[open] summary:after{content:'−'}.faq-item p{color:#64748b;line-height:1.7;font-size:14px;padding:0 0 18px;animation:faqOpen .3s ease}@keyframes faqOpen{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.reveal{opacity:1;transform:none}}
+
+        /* Ticketora public UI recovery */
+        .access-card{display:flex!important;align-items:center!important;gap:14px!important;width:100%;padding:18px 20px!important;background:#fff!important;border:1px solid #e2e8f0!important;border-radius:18px!important;color:#071a3b!important;text-decoration:none!important;box-shadow:0 8px 24px rgba(15,23,42,.05);transition:.2s ease}
+        .access-card:hover{transform:translateY(-3px);border-color:#fed7aa;box-shadow:0 14px 30px rgba(15,23,42,.09)}
+        .access-card>span:nth-child(2){display:flex!important;flex-direction:column!important;gap:4px!important;min-width:0}
+        .access-card b{font-size:15px;line-height:1.2}.access-card small{font-size:12px;color:#64748b;line-height:1.4}.access-icon{width:42px;height:42px;flex:0 0 42px;border-radius:12px;background:#fff7ed;color:#f97316;display:flex!important;align-items:center;justify-content:center}
+        .step-number{width:40px;height:40px;border-radius:12px;background:#fff7ed;color:#f97316;display:flex;align-items:center;justify-content:center;font-weight:900;margin-bottom:14px}
+        .reveal{opacity:1!important;transform:none!important}
+        .faq-item{display:block!important}.faq-item summary{display:block!important}
+        .public-ad-strip{background:#071a3b;color:#fff;border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08)}
+        .public-ad-scroll{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;padding:12px 4px;scrollbar-width:none}.public-ad-scroll::-webkit-scrollbar{display:none}
+        .public-ad-card{min-width:min(88vw,720px);scroll-snap-align:start;border-radius:14px;overflow:hidden;background:#fff;display:block;box-shadow:0 8px 24px rgba(0,0,0,.12)}.public-ad-card img{display:block;width:100%;height:86px;object-fit:cover}.public-ad-card{transition:transform .2s ease,box-shadow .2s ease}.public-ad-card:hover{transform:translateY(-2px);box-shadow:0 14px 32px rgba(0,0,0,.16)}.public-ad-fallback{padding:20px;color:#071a3b;font-weight:900}
+        @media(max-width:767px){.access-card{padding:15px!important}.public-ad-card{min-width:92vw}.public-ad-card img{height:72px}}
 </style>
 </head>
 <body class="bg-white text-slate-900 min-h-screen">
@@ -62,7 +75,7 @@
 
         <div class="hidden md:flex items-center gap-7">
             <button onclick="showSection('client-events');document.getElementById('events-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Événements</button>
-            <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Cagnottes</button><button onclick="document.getElementById('fonctionnalites').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Fonctionnalités</button><button onclick="document.getElementById('faq').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">FAQ</button>
+            <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Cagnottes</button><button onclick="document.getElementById('faq').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">FAQ</button>
             <button onclick="openParticipantLogin()" class="nav-link text-sm font-bold">Connexion</button>
             <a href="organisateur.html" class="nav-link text-sm font-bold">Organisateur</a>
             <a href="admin.html" class="nav-link text-sm font-bold">Administration</a>
@@ -79,7 +92,6 @@
         <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Cagnottes</button>
         <button onclick="openParticipantLogin();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Connexion / Mes tickets</button>
         <a href="organisateur.html" onclick="togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Espace organisateur</a>
-        <a href="admin.html" onclick="togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Administration</a>
         <button onclick="openParticipantRegister();togglePublicMenu()" class="w-full bg-[#F97316] text-white font-bold py-3 rounded-xl">Créer un compte</button>
     </div>
 
@@ -176,7 +188,7 @@
             <div id="public-cagnottes-empty" class="rounded-3xl bg-slate-50 border border-slate-200 p-8 md:p-12 text-center"><div class="w-14 h-14 mx-auto rounded-2xl bg-orange-50 text-[#F97316] flex items-center justify-center text-xl"><i class="fa-solid fa-hand-holding-heart"></i></div><h3 class="text-xl font-black text-[#071a3b] mt-4">Aucune cagnotte active</h3><p class="text-slate-500 max-w-xl mx-auto mt-2 font-medium">Les prochaines campagnes de collecte apparaîtront ici.</p></div>
         </div>
     </section>
-    <div id="modal-cagnotte" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[75]"><div class="bg-white w-full max-w-md rounded-3xl p-7 relative"><button onclick="closeCagnotteModal()" class="absolute top-4 right-4 text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button><div class="w-12 h-12 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-hand-holding-heart"></i></div><h3 id="cag-modal-title" class="text-2xl font-black text-[#071a3b] mt-4"></h3><p id="cag-modal-desc" class="text-sm text-slate-500 mt-2"></p><div class="mt-5 space-y-3"><input id="cag-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Votre nom (facultatif)"><input id="cag-email" type="email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Email (facultatif)"><input id="cag-amount" type="number" min="100" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-bold" placeholder="Montant de votre contribution en FCFA"><button onclick="contributeCagnotte()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Contribuer avec Tchin</button><p class="text-[11px] text-slate-400">Le montant n’est pas fixé par la cagnotte : vous choisissez librement votre contribution (minimum 100 FCFA pour le paiement).</p></div></div></div>
+    <div id="modal-cagnotte" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[75]"><div class="bg-white w-full max-w-md rounded-3xl p-7 relative"><button onclick="closeCagnotteModal()" class="absolute top-4 right-4 text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button><div class="w-12 h-12 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-hand-holding-heart"></i></div><h3 id="cag-modal-title" class="text-2xl font-black text-[#071a3b] mt-4"></h3><p id="cag-modal-desc" class="text-sm text-slate-500 mt-2"></p><div class="mt-5 space-y-3"><input id="cag-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Votre nom (facultatif)"><input id="cag-email" type="email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Email (facultatif)"><input id="cag-amount" type="number" min="100" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-bold" placeholder="Montant de votre contribution en FCFA"><button onclick="contributeCagnotte()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Contribuer</button><p class="text-[11px] text-slate-400">Le montant n’est pas fixé par la cagnotte : vous choisissez librement votre contribution (minimum 100 FCFA pour le paiement).</p></div></div></div>
 
     <!-- VÉRIFICATION PUBLIQUE -->
     <section id="client-verify" class="hidden bg-[#071a3b] px-6 py-14">
@@ -206,7 +218,7 @@
                 <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-xl px-4 py-3"><div><p class="text-xs font-bold text-slate-300 uppercase">Quantité</p><p id="buy-stock-note" class="text-[11px] text-slate-500 mt-1"></p></div><div class="flex items-center gap-3"><button type="button" onclick="changeBuyQuantity(-1)" class="w-9 h-9 rounded-lg bg-slate-700 text-white font-black">−</button><span id="buy-quantity" class="w-8 text-center font-black text-white">1</span><button type="button" onclick="changeBuyQuantity(1)" class="w-9 h-9 rounded-lg bg-slate-700 text-white font-black">+</button></div></div>
                 <div id="buy-total-box" class="rounded-xl bg-slate-900 border border-slate-700 p-4 text-sm"></div>
                 <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">Code Promo (Optionnel)</label><div class="flex gap-2"><input type="text" id="buy-promo" placeholder="Ex: JEUNES10" class="uppercase w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white"><button type="button" onclick="applyPromoCode()" class="bg-slate-700 text-xs px-3 py-2 rounded-xl font-bold hover:bg-slate-600 text-white">Appliquer</button></div><div id="buy-promo-message" class="text-xs mt-2"></div></div>
-                <button onclick="processPayment()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2"><i class="fa-solid fa-credit-card"></i> Payer avec Tchin</button>
+                <button onclick="processPayment()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2"><i class="fa-solid fa-credit-card"></i> Payer </button>
             </div>
             <div id="buy-step-2" class="hidden space-y-4 text-center">
                 <div id="ticket-pdf-area" class="relative overflow-hidden mx-auto bg-white" style="width:1200px;height:560px;max-width:100%;aspect-ratio:1200/560;">
@@ -243,19 +255,6 @@
     </div>
 
 
-<!-- COMMENT ÇA MARCHE -->
-<section id="comment-ca-marche" class="bg-white px-6 md:px-8 py-14 border-t border-slate-100">
- <div class="max-w-7xl mx-auto">
-  <div class="max-w-2xl mb-8"><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Simple & rapide</p><h2 class="text-3xl md:text-4xl font-black text-[#071a3b]">Comment ça marche ?</h2><p class="text-slate-500 mt-2 font-semibold">De la découverte à l’entrée, Ticketora vous accompagne à chaque étape.</p></div>
-  <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-   <div class="feature-card reveal"><div class="step-number">1</div><h3>Découvrez</h3><p>Recherchez un événement par nom, ville, catégorie ou date.</p></div>
-   <div class="feature-card reveal"><div class="step-number">2</div><h3>Choisissez</h3><p>Consultez les détails, les tarifs, le stock et le lieu.</p></div>
-   <div class="feature-card reveal"><div class="step-number">3</div><h3>Payez</h3><p>Renseignez vos coordonnées puis confirmez votre paiement avec Tchin.</p></div>
-   <div class="feature-card reveal"><div class="step-number">4</div><h3>Entrez</h3><p>Conservez votre billet et présentez son QR Code unique à l’entrée.</p></div>
-  </div>
- </div>
-</section>
-
 <!-- ACCÈS AUX ESPACES -->
 <section id="acces" class="soft-section px-6 md:px-8 py-12">
  <div class="max-w-7xl mx-auto">
@@ -265,18 +264,6 @@
    <a href="organisateur.html" class="access-card"><span class="access-icon"><i class="fa-solid fa-user-tie"></i></span><span><b>Organisateur</b><small>Événements, ventes, rapports et retraits</small></span><i class="fa-solid fa-arrow-right ml-auto"></i></a>
    <a href="admin.html" class="access-card"><span class="access-icon"><i class="fa-solid fa-shield-halved"></i></span><span><b>Administration</b><small>Validation, supervision et gestion Ticketora</small></span><i class="fa-solid fa-arrow-right ml-auto"></i></a>
   </div>
- </div>
-</section>
-
-<!-- FONCTIONNALITÉS -->
-<section id="fonctionnalites" class="soft-section px-6 md:px-8 py-14">
- <div class="max-w-7xl mx-auto"><div class="max-w-2xl mb-8"><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Ticketora</p><h2 class="text-3xl md:text-4xl font-black text-[#071a3b]">Tout ce qu’il faut pour vos événements</h2><p class="text-slate-500 mt-2 font-semibold">Une expérience simple pour les participants et des outils puissants pour les organisateurs.</p></div>
- <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-  <div class="feature-card reveal"><i class="fa-solid fa-magnifying-glass"></i><h3>Recherche</h3><p>Trouvez rapidement vos événements.</p></div>
-  <div class="feature-card reveal"><i class="fa-solid fa-ticket"></i><h3>Billetterie</h3><p>Achat, téléchargement et QR Code sécurisé.</p></div>
-  <div class="feature-card reveal"><i class="fa-solid fa-chart-line"></i><h3>Gestion</h3><p>Ventes, participants, scans et statistiques.</p></div>
-  <div class="feature-card reveal"><i class="fa-solid fa-file-export"></i><h3>Exports & rapports</h3><p>Exportez vos données et analysez vos résultats.</p></div>
- </div>
  </div>
 </section>
 
@@ -309,6 +296,12 @@
   <div class="partners-marquee"><div id="partners-track" class="partners-track"></div></div>
 </section>
 
+
+
+<!-- PUBLICITÉ TICKETORA — GÉRÉE PAR L'ADMIN -->
+<section id="public-ads" class="public-ad-strip hidden" aria-label="Publicité Ticketora">
+  <div class="max-w-7xl mx-auto px-4 md:px-6"><div id="public-ads-scroll" class="public-ad-scroll"></div></div>
+</section>
 
     <!-- SUPPORT -->
     <a href="https://wa.me/22872753685" target="_blank" rel="noopener noreferrer" class="fixed bottom-6 right-6 bg-emerald-500 hover:bg-emerald-600 text-white p-4 rounded-full shadow-2xl z-40 flex items-center gap-2 font-bold text-sm transition transform hover:scale-105" title="Support WhatsApp">
