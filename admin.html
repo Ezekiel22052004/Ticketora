@@ -73,6 +73,20 @@
       .ticketora-kpi,.ticketora-panel{background:var(--panel);border:1px solid #243b5d;border-radius:13px;box-shadow:none}.ticketora-kpi{height:99px;padding:20px 16px;display:flex;align-items:center;gap:12px}.ticketora-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;color:#fff}.ticketora-icon.orange{background:#ff8500}.ticketora-icon.purple{background:#7837ed}.ticketora-icon.green{background:#0ba24c}.ticketora-icon.blue{background:#2868ea}.ticketora-icon.yellow{background:#f5a100}.ticketora-kpi-value{font-size:22px;font-weight:900;line-height:1.1;color:#fff}.ticketora-kpi-label{font-size:10px;color:#9ab0ce;margin-top:5px;font-weight:600}
       .ticketora-panel{padding:16px;overflow:hidden}.ticketora-panel h3{font-size:14px;font-weight:900;color:#fff;margin:0}.ticketora-panel p{font-size:9px;color:#7390b5;margin-top:4px}.ticketora-select{background:#0e203e;border:1px solid #2c4363;color:#dce6f3;border-radius:8px;font-size:9px;padding:7px 10px}.ticketora-outline-btn{border:1px solid var(--orange);color:#ff9a24;background:transparent;border-radius:7px;padding:7px 12px;font-size:9px;font-weight:800}.ticketora-status-row{height:37px;padding:0 14px;border-top:1px solid #223556;display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:700;color:#d9e3f0}.ticketora-status-row b{color:#ff9800}.green-text{color:#00c968!important}.red-text{color:#ff3d3d!important}.blue-text{color:#3980ff!important}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#d7e6f9;margin-right:5px}.tab-content.hidden{display:none!important}main{background:#07152f!important}.ticketora-sidebar input,.ticketora-sidebar select,.ticketora-sidebar textarea,input,select,textarea{caret-color:#0f172a}.ticketora-panel input,.ticketora-panel select,.ticketora-panel textarea,.modal-input{color:#0f172a!important;background:#f8fafc!important}.ticketora-panel input::placeholder,.ticketora-panel textarea::placeholder{color:#64748b!important}
       @media(max-width:1100px){.grid-cols-5{grid-template-columns:repeat(3,minmax(0,1fr))}.grid-cols-\[1\.65fr_\.72fr_\.8fr\]{grid-template-columns:1fr}.grid-cols-\[2\.05fr_\.78fr\]{grid-template-columns:1fr}}
+
+      @media(max-width:900px){
+        body{flex-direction:column!important;overflow:auto!important}
+        .ticketora-sidebar{width:100%!important;height:auto!important;min-height:0!important;position:relative!important}
+        .ticketora-brand{height:72px;padding:14px 18px}
+        .ticketora-sidebar nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:10px!important;max-height:280px;overflow-y:auto}
+        .ticketora-section-title{grid-column:1/-1;margin:8px 4px 4px!important}
+        .ticketora-nav{height:38px!important;margin:0!important;font-size:11px!important}
+        .ticketora-logout{margin:8px 12px 12px;width:calc(100% - 24px)}
+        .ticketora-topbar{height:auto!important;min-height:64px;padding:12px 14px!important}
+        .ticketora-topbar>div:first-child{width:48%!important}
+        main{padding:16px!important;overflow:visible!important}
+        .grid-cols-5{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+      }
     </style>
 <style>
 body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
@@ -100,10 +114,11 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
         <button onclick="switchTab('chat')" id="nav-chat" class="nav-btn ticketora-nav"><i class="fa-regular fa-comments text-[12px]"></i><span>Chat</span></button>
         <button onclick="switchTab('payments')" id="nav-payments" class="nav-btn ticketora-nav"><i class="fa-regular fa-credit-card text-[12px]"></i><span>Paiements</span></button>
         <button onclick="switchTab('payments')" class="ticketora-nav"><i class="fa-solid fa-right-left text-[12px]"></i><span>Retraits</span></button>
-        <button onclick="switchTab('cagnottes')" id="nav-cagnottes" class="nav-btn ticketora-nav"><i class="fa-solid fa-piggy-bank text-[12px]"></i><span>Cagnottes</span></button>\n        <button onclick="switchTab('partners')" id="nav-partners" class="nav-btn ticketora-nav"><i class="fa-solid fa-handshake text-[12px]"></i><span>Partenaires</span></button>
+        <button onclick="switchTab('cagnottes')" id="nav-cagnottes" class="nav-btn ticketora-nav"><i class="fa-solid fa-piggy-bank text-[12px]"></i><span>Cagnottes</span></button>
+        <button onclick="switchTab('partners')" id="nav-partners" class="nav-btn ticketora-nav"><i class="fa-solid fa-handshake text-[12px]"></i><span>Partenaires</span></button>
         <button onclick="switchTab('scanner')" id="nav-scanner" class="nav-btn ticketora-nav"><i class="fa-solid fa-user-check text-[12px]"></i><span>Agents / Scanners</span></button>
         <div class="ticketora-section-title mt-5">SYSTÈME</div>
-        <button onclick="showAdminPlaceholder('Journaux d’activité')" class="ticketora-nav"><i class="fa-regular fa-clock text-[12px]"></i><span>Journaux d'activité</span></button>
+        <button onclick="switchTab('logs')" class="ticketora-nav"><i class="fa-regular fa-clock text-[12px]"></i><span>Journaux d'activité</span></button>
         <button onclick="switchTab('settings')" id="nav-settings" class="nav-btn ticketora-nav"><i class="fa-solid fa-gear text-[12px]"></i><span>Paramètres</span></button>
       </nav>
       <button onclick="logoutAdmin()" class="ticketora-logout"><i class="fa-solid fa-arrow-right-from-bracket"></i><span>Déconnexion</span></button>

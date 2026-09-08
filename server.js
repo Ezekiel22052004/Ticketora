@@ -19,7 +19,7 @@ const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.D
 if(!process.env.DATABASE_URL) console.warn('DATABASE_URL manquante.');
 if(!process.env.SESSION_SECRET) console.warn('SESSION_SECRET manquante.');
 
-const allowedOrigins=new Set([FRONTEND_URL,'http://localhost:3000','http://127.0.0.1:3000','http://localhost:5500','http://127.0.0.1:5500']);
+const allowedOrigins=new Set([FRONTEND_URL,'https://ticketora.site','https://www.ticketora.site','https://ticketora.netlify.app','http://localhost:3000','http://127.0.0.1:3000','http://localhost:5500','http://127.0.0.1:5500']);
 app.set('trust proxy',1);
 app.use(helmet({
   crossOriginResourcePolicy:{policy:'cross-origin'},
@@ -279,10 +279,10 @@ app.get('/api/events',asyncRoute(async(req,res)=>{
  if(sort==='trending')order=`(COALESCE(l.like_count,0)*5 + COALESCE(s.sold_count,0)*3 + CASE WHEN e.date<=CURRENT_DATE+INTERVAL '7 days' THEN 4 ELSE 0 END + CASE WHEN e.created_at>=NOW()-INTERVAL '7 days' THEN 2 ELSE 0 END) DESC,e.date ASC,e.id DESC`;
  else if(sort==='likes')order='COALESCE(l.like_count,0) DESC,e.date ASC,e.id DESC';
  const r=await pool.query(`WITH like_stats AS (SELECT event_id,COUNT(*)::int like_count FROM event_likes GROUP BY event_id), sold_stats AS (SELECT event_id,COUNT(*)::int sold_count FROM tickets GROUP BY event_id)
- SELECT e.*,COALESCE(s.sold_count,0)::int sold_count,COALESCE(l.like_count,0)::int like_count,EXISTS(SELECT 1 FROM event_likes el WHERE el.event_id=e.id AND el.visitor_key=$${likeParam}) AS liked,
+ SELECT e.*,COALESCE(o.status='VALIDE',false) AS organizer_verified,COALESCE(s.sold_count,0)::int sold_count,COALESCE(l.like_count,0)::int like_count,EXISTS(SELECT 1 FROM event_likes el WHERE el.event_id=e.id AND el.visitor_key=$${likeParam}) AS liked,
  CASE WHEN e.capacity>0 AND COALESCE(s.sold_count,0)>=e.capacity THEN true
  WHEN jsonb_typeof(e.ticket_categories)='array' AND jsonb_array_length(e.ticket_categories)>0 AND COALESCE(s.sold_count,0)>=COALESCE((SELECT SUM((x->>'total_stock')::int) FROM jsonb_array_elements(e.ticket_categories) x),0) THEN true ELSE false END AS sold_out
- FROM events e LEFT JOIN like_stats l ON l.event_id=e.id LEFT JOIN sold_stats s ON s.event_id=e.id WHERE ${where.join(' AND ')} ORDER BY ${order}`,params);
+ FROM events e LEFT JOIN organizers o ON o.id=e.org_id LEFT JOIN like_stats l ON l.event_id=e.id LEFT JOIN sold_stats s ON s.event_id=e.id WHERE ${where.join(' AND ')} ORDER BY ${order}`,params);
  res.json({success:true,events:r.rows});
 }));
 app.post('/api/events/:id/like',asyncRoute(async(req,res)=>{const id=Number(req.params.id),vk=visitorKey(req);if(!Number.isInteger(id)||!vk)return res.status(400).json({success:false,message:'Identifiant visiteur requis.'});const ev=await pool.query("SELECT id FROM events WHERE id=$1 AND status='PUBLIE' AND date>=CURRENT_DATE",[id]);if(!ev.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});const existing=await pool.query('SELECT 1 FROM event_likes WHERE event_id=$1 AND visitor_key=$2',[id,vk]);let liked;if(existing.rows.length){await pool.query('DELETE FROM event_likes WHERE event_id=$1 AND visitor_key=$2',[id,vk]);liked=false;}else{await pool.query('INSERT INTO event_likes(event_id,visitor_key) VALUES($1,$2) ON CONFLICT DO NOTHING',[id,vk]);liked=true;}const c=await pool.query('SELECT COUNT(*)::int like_count FROM event_likes WHERE event_id=$1',[id]);res.json({success:true,liked,like_count:c.rows[0].like_count});}));

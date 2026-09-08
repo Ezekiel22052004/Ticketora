@@ -13,3 +13,5 @@ Base: Ticketora V6 Payment Fees Fix / Cagnotte Fix.
 
 ## Deployment note
 Do not commit `.env` or production secrets. Run the DB migration through the server startup or apply `db.sql` to a new database.
+
+Stability patch: public navigation restored, missing showSection restored, CSS leak fixed, role access links restored, CORS domains hardened, event detail view added, verified organizer indicator added, mobile dashboards improved.

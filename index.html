@@ -7,15 +7,14 @@
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#06132f">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
-.pwa-install-btn{position:fixed;right:16px;bottom:18px;z-index:120;display:none;align-items:center;gap:9px;background:#06132f;color:#fff;border:1px solid rgba(249,115,22,.45);box-shadow:0 14px 35px rgba(0,0,0,.22);border-radius:999px;padding:12px 16px;font-weight:800;font-size:13px}
-.pwa-install-btn.show{display:flex}
-
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         html{scroll-behavior:smooth}
+        .pwa-install-btn{position:fixed;right:16px;bottom:18px;z-index:120;display:none;align-items:center;gap:9px;background:#06132f;color:#fff;border:1px solid rgba(249,115,22,.45);box-shadow:0 14px 35px rgba(0,0,0,.22);border-radius:999px;padding:12px 16px;font-weight:800;font-size:13px}
+        .pwa-install-btn.show{display:flex}
         body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
         .fa-solid,.fa-regular,.fa-brands,.fa{font-family:"Font Awesome 6 Free" !important}
         .fa-brands{font-family:"Font Awesome 6 Brands" !important}
@@ -65,6 +64,8 @@
             <button onclick="showSection('client-events');document.getElementById('events-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Événements</button>
             <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Cagnottes</button><button onclick="document.getElementById('fonctionnalites').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Fonctionnalités</button><button onclick="document.getElementById('faq').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">FAQ</button>
             <button onclick="openParticipantLogin()" class="nav-link text-sm font-bold">Connexion</button>
+            <a href="organisateur.html" class="nav-link text-sm font-bold">Organisateur</a>
+            <a href="admin.html" class="nav-link text-sm font-bold">Administration</a>
             <button onclick="openParticipantRegister()" class="bg-[#F97316] hover:bg-orange-600 text-white text-sm px-5 py-3 rounded-xl font-bold shadow-lg shadow-orange-900/20 transition">Créer un compte</button>
         </div>
 
@@ -76,7 +77,9 @@
     <div id="public-mobile-menu" class="hidden md:hidden fixed top-[80px] left-0 right-0 z-40 bg-[#06132f] border-t border-white/10 px-6 py-5 space-y-3 shadow-xl">
         <button onclick="showSection('client-events');document.getElementById('events-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Événements</button>
         <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Cagnottes</button>
-        <button onclick="openParticipantLogin();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Connexion</button>
+        <button onclick="openParticipantLogin();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Connexion / Mes tickets</button>
+        <a href="organisateur.html" onclick="togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Espace organisateur</a>
+        <a href="admin.html" onclick="togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Administration</a>
         <button onclick="openParticipantRegister();togglePublicMenu()" class="w-full bg-[#F97316] text-white font-bold py-3 rounded-xl">Créer un compte</button>
     </div>
 
@@ -240,6 +243,31 @@
     </div>
 
 
+<!-- COMMENT ÇA MARCHE -->
+<section id="comment-ca-marche" class="bg-white px-6 md:px-8 py-14 border-t border-slate-100">
+ <div class="max-w-7xl mx-auto">
+  <div class="max-w-2xl mb-8"><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Simple & rapide</p><h2 class="text-3xl md:text-4xl font-black text-[#071a3b]">Comment ça marche ?</h2><p class="text-slate-500 mt-2 font-semibold">De la découverte à l’entrée, Ticketora vous accompagne à chaque étape.</p></div>
+  <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   <div class="feature-card reveal"><div class="step-number">1</div><h3>Découvrez</h3><p>Recherchez un événement par nom, ville, catégorie ou date.</p></div>
+   <div class="feature-card reveal"><div class="step-number">2</div><h3>Choisissez</h3><p>Consultez les détails, les tarifs, le stock et le lieu.</p></div>
+   <div class="feature-card reveal"><div class="step-number">3</div><h3>Payez</h3><p>Renseignez vos coordonnées puis confirmez votre paiement avec Tchin.</p></div>
+   <div class="feature-card reveal"><div class="step-number">4</div><h3>Entrez</h3><p>Conservez votre billet et présentez son QR Code unique à l’entrée.</p></div>
+  </div>
+ </div>
+</section>
+
+<!-- ACCÈS AUX ESPACES -->
+<section id="acces" class="soft-section px-6 md:px-8 py-12">
+ <div class="max-w-7xl mx-auto">
+  <div class="text-center mb-7"><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Accès Ticketora</p><h2 class="text-2xl md:text-3xl font-black text-[#071a3b]">Choisissez votre espace</h2><p class="text-slate-500 mt-2 font-semibold">Les participants, organisateurs et administrateurs disposent d’un accès séparé et sécurisé.</p></div>
+  <div class="grid md:grid-cols-3 gap-4">
+   <button onclick="openParticipantLogin()" class="access-card text-left"><span class="access-icon"><i class="fa-solid fa-user"></i></span><span><b>Participant</b><small>Mes billets, commandes et historique</small></span><i class="fa-solid fa-arrow-right ml-auto"></i></button>
+   <a href="organisateur.html" class="access-card"><span class="access-icon"><i class="fa-solid fa-user-tie"></i></span><span><b>Organisateur</b><small>Événements, ventes, rapports et retraits</small></span><i class="fa-solid fa-arrow-right ml-auto"></i></a>
+   <a href="admin.html" class="access-card"><span class="access-icon"><i class="fa-solid fa-shield-halved"></i></span><span><b>Administration</b><small>Validation, supervision et gestion Ticketora</small></span><i class="fa-solid fa-arrow-right ml-auto"></i></a>
+  </div>
+ </div>
+</section>
+
 <!-- FONCTIONNALITÉS -->
 <section id="fonctionnalites" class="soft-section px-6 md:px-8 py-14">
  <div class="max-w-7xl mx-auto"><div class="max-w-2xl mb-8"><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Ticketora</p><h2 class="text-3xl md:text-4xl font-black text-[#071a3b]">Tout ce qu’il faut pour vos événements</h2><p class="text-slate-500 mt-2 font-semibold">Une expérience simple pour les participants et des outils puissants pour les organisateurs.</p></div>
@@ -260,8 +288,12 @@
   <details class="faq-item reveal"><summary>Comment acheter un billet ?</summary><p>Sélectionnez un événement, choisissez votre type de billet, renseignez vos informations puis effectuez le paiement via le moyen proposé.</p></details>
   <details class="faq-item reveal"><summary>Comment récupérer mon billet ?</summary><p>Après confirmation du paiement, votre billet est généré avec un identifiant unique et un QR Code. Vous pouvez le télécharger et le conserver.</p></details>
   <details class="faq-item reveal"><summary>Les événements gratuits sont-ils disponibles ?</summary><p>Oui. Un événement gratuit ne demande aucun paiement. Une inscription permet de recevoir un billet gratuit lorsque l’organisateur l’a activé.</p></details>
-  <details class="faq-item reveal"><summary>Comment devenir organisateur ?</summary><p>Envoyez votre dossier à Ticketora. Après vérification et validation, vous recevez les informations nécessaires pour accéder à votre espace organisateur.</p></details>
   <details class="faq-item reveal"><summary>Comment fonctionne le QR Code à l’entrée ?</summary><p>Le QR Code est contrôlé par l’équipe de l’événement. Une validation est enregistrée côté serveur afin d’éviter qu’un billet soit accepté plusieurs fois.</p></details>
+  <details class="faq-item reveal"><summary>Comment retrouver mes billets plus tard ?</summary><p>Créez un compte participant puis utilisez « Connexion / Mes tickets » pour retrouver votre historique et vos billets associés à votre compte.</p></details>
+  <details class="faq-item reveal"><summary>Comment acheter plusieurs billets ?</summary><p>Dans l’achat, choisissez la catégorie puis utilisez les boutons − et +. Chaque billet acheté est généré avec son propre identifiant et son propre QR Code.</p></details>
+  <details class="faq-item reveal"><summary>Les frais Tchin sont-ils ajoutés au prix du billet ?</summary><p>Oui. Les frais Tchin sont affichés séparément et ajoutés au total payé par le client. Le prix de base du billet reste celui défini par l’organisateur.</p></details>
+  <details class="faq-item reveal"><summary>Comment devenir organisateur ?</summary><p>Ouvrez l’espace Organisateur, remplissez la demande d’accès puis attendez la validation de l’administrateur. La connexion est disponible une fois le compte validé.</p></details>
+  <details class="faq-item reveal"><summary>Que se passe-t-il si mon paiement n’est pas confirmé ?</summary><p>Ticketora attend la confirmation réelle du paiement avant de considérer la commande comme payée et d’émettre les billets.</p></details>
   <details class="faq-item reveal"><summary>Comment contacter Ticketora ?</summary><p>📞 +228 72 75 36 85 · 📧 ticketora2026@gmail.com</p></details>
  </div></div>
 </section>
@@ -302,10 +334,8 @@
     <script>
         function togglePublicMenu(){document.getElementById('public-mobile-menu')?.classList.toggle('hidden')}
         function searchFromHero(){const q=(document.getElementById('hero-search-event')?.value||'').trim();showSection('client-events');const s=document.getElementById('search-event');if(s)s.value=q;filterEvents();document.getElementById('events-public')?.scrollIntoView({behavior:'smooth'});}
-        function openParticipantLogin(){const m=document.getElementById('participant-modal');document.getElementById('participant-modal-title').innerText='Connexion';m.classList.remove('hidden');m.classList.add('flex')}
-        function openParticipantRegister(){const m=document.getElementById('participant-modal');document.getElementById('participant-modal-title').innerText='Créer un compte';m.classList.remove('hidden');m.classList.add('flex')}
         function closeParticipantModal(){const m=document.getElementById('participant-modal');m.classList.add('hidden');m.classList.remove('flex')}
-        window.togglePublicMenu=togglePublicMenu;window.searchFromHero=searchFromHero;window.openParticipantLogin=openParticipantLogin;window.openParticipantRegister=openParticipantRegister;window.closeParticipantModal=closeParticipantModal;
+        window.togglePublicMenu=togglePublicMenu;window.searchFromHero=searchFromHero;window.closeParticipantModal=closeParticipantModal;
     </script>
 <script>
 const heroWords=['votre événement','votre concert','votre expérience'];
