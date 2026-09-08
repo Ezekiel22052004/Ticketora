@@ -19,11 +19,17 @@ CREATE TABLE IF NOT EXISTS events (
   category VARCHAR(100) NOT NULL DEFAULT 'Concert',
   date DATE NOT NULL,
   location VARCHAR(255) NOT NULL DEFAULT '',
+  venue_name VARCHAR(255) NOT NULL DEFAULT '',
+  city VARCHAR(120) NOT NULL DEFAULT '',
+  address VARCHAR(500) NOT NULL DEFAULT '',
+  latitude NUMERIC(10,7),
+  longitude NUMERIC(10,7),
   description TEXT DEFAULT '',
   price INTEGER NOT NULL DEFAULT 0 CHECK (price >= 0),
   capacity INTEGER NOT NULL DEFAULT 0 CHECK (capacity >= 0),
   status VARCHAR(20) NOT NULL DEFAULT 'EN_ATTENTE' CHECK (status IN ('BROUILLON','EN_ATTENTE','PUBLIE','REFUSE')),
   ticket_categories JSONB NOT NULL DEFAULT '[]'::jsonb,
+  max_tickets_per_order INTEGER NOT NULL DEFAULT 10 CHECK (max_tickets_per_order > 0),
   image_url TEXT,
   event_type VARCHAR(10) NOT NULL DEFAULT 'PAID',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -37,6 +43,8 @@ CREATE TABLE IF NOT EXISTS orders (
   ticket_type VARCHAR(120) NOT NULL,
   customer_name VARCHAR(255) NOT NULL,
   customer_email VARCHAR(255) NOT NULL,
+  customer_phone VARCHAR(60) DEFAULT '',
+  quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
   base_amount INTEGER NOT NULL CHECK (base_amount >= 0),
   discount_amount INTEGER NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
   total_amount INTEGER NOT NULL CHECK (total_amount >= 0),
@@ -52,7 +60,7 @@ CREATE TABLE IF NOT EXISTS orders (
 
 CREATE TABLE IF NOT EXISTS tickets (
   id BIGSERIAL PRIMARY KEY,
-  order_id BIGINT NOT NULL UNIQUE REFERENCES orders(id) ON DELETE RESTRICT,
+  order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE RESTRICT,
   code VARCHAR(32) NOT NULL UNIQUE,
   event_id BIGINT NOT NULL REFERENCES events(id) ON DELETE RESTRICT,
   org_id BIGINT REFERENCES organizers(id) ON DELETE SET NULL,
@@ -62,6 +70,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   ticket_type VARCHAR(120) NOT NULL,
   customer_name VARCHAR(255) NOT NULL,
   customer_email VARCHAR(255) NOT NULL,
+  customer_phone VARCHAR(60) DEFAULT '',
   total_amount INTEGER NOT NULL,
   admin_commission INTEGER NOT NULL,
   organizer_amount INTEGER NOT NULL,
@@ -103,6 +112,16 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 
 CREATE INDEX IF NOT EXISTS idx_events_status_date ON events(status, date);
 CREATE INDEX IF NOT EXISTS idx_events_org ON events(org_id);
+
+CREATE TABLE IF NOT EXISTS event_likes (
+  id BIGSERIAL PRIMARY KEY,
+  event_id BIGINT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  visitor_key VARCHAR(128) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(event_id, visitor_key)
+);
+CREATE INDEX IF NOT EXISTS idx_event_likes_event ON event_likes(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_likes_visitor ON event_likes(visitor_key);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_tchin_token ON orders(tchin_token);
 CREATE INDEX IF NOT EXISTS idx_tickets_event ON tickets(event_id);
@@ -241,3 +260,10 @@ CREATE TABLE IF NOT EXISTS event_partners (
   active BOOLEAN NOT NULL DEFAULT TRUE,
   sort_order INTEGER NOT NULL DEFAULT 0
 );
+
+-- V7 location migration (safe on existing Ticketora databases)
+ALTER TABLE events ADD COLUMN IF NOT EXISTS venue_name VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE events ADD COLUMN IF NOT EXISTS city VARCHAR(120) NOT NULL DEFAULT '';
+ALTER TABLE events ADD COLUMN IF NOT EXISTS address VARCHAR(500) NOT NULL DEFAULT '';
+ALTER TABLE events ADD COLUMN IF NOT EXISTS latitude NUMERIC(10,7);
+ALTER TABLE events ADD COLUMN IF NOT EXISTS longitude NUMERIC(10,7);

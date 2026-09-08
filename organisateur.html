@@ -13,6 +13,9 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
 .fa-solid,.fa-regular,.fa{font-family:"Font Awesome 6 Free" !important}
 .fa-brands{font-family:"Font Awesome 6 Brands" !important}
 </style>
+<link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#06132f"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<style>#event-map{height:300px;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0}.leaflet-container{font:inherit}</style>
 </head>
 <body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex">
 
@@ -108,16 +111,16 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
             <!-- VENTES -->
             <section id="org-sec-stats" class="space-y-6">
                 <h1 class="text-2xl font-black text-slate-900">Aperçu des Ventes</h1>
-                <div class="grid grid-cols-3 gap-6">
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
                     <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Solde Net Dispo</p><p id="org-stat-revenue" class="text-2xl font-black text-slate-900 mt-2">0 FCFA</p></div>
                     <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Billets Vendus</p><p id="org-stat-tickets" class="text-2xl font-black text-slate-900 mt-2">0</p></div>
                     <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Événements Actifs</p><p id="org-stat-events" class="text-2xl font-black text-slate-900 mt-2">0</p></div>
                     <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Billets Utilisés</p><p id="org-stat-used" class="text-2xl font-black text-slate-900 mt-2">0</p></div>
-                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Retraits en attente</p><p id="org-stat-pending-payout" class="text-2xl font-black text-slate-900 mt-2">0 FCFA</p></div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Retraits en attente</p><p id="org-stat-pending-payout" class="text-2xl font-black text-slate-900 mt-2">0 FCFA</p></div><div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Taux de présence</p><p id="org-stat-attendance" class="text-2xl font-black text-slate-900 mt-2">0%</p></div>
                 </div>
                 <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><div class="flex items-center justify-between"><div><p class="text-xs font-bold text-slate-400 uppercase">Ventes par événement</p><p class="text-xs text-slate-500 mt-1">Tickets vendus</p></div><i class="fa-solid fa-chart-column text-[#F97316] text-xl"></i></div><div class="mt-4 h-64"><canvas id="org-sales-chart"></canvas></div></div>
-                <div class="grid md:grid-cols-2 gap-6">
-                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Performance</p><div class="mt-4 h-2 bg-slate-100 rounded-full overflow-hidden"><div id="org-performance-bar" class="h-full bg-[#F97316] rounded-full" style="width:0%"></div></div><p class="text-xs text-slate-500 mt-2">Suivez vos ventes et vos entrées depuis ce tableau de bord.</p></div>
+                <div class="grid md:grid-cols-2 gap-6"><div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Meilleurs événements</p><div id="org-top-events" class="mt-3"></div></div>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p id="org-performance-label" class="text-xs font-bold text-slate-400 uppercase">Taux de présence : 0%</p><div class="mt-4 h-2 bg-slate-100 rounded-full overflow-hidden"><div id="org-performance-bar" class="h-full bg-[#F97316] rounded-full" style="width:0%"></div></div><p class="text-xs text-slate-500 mt-2">Suivez vos ventes et vos entrées depuis ce tableau de bord.</p></div>
                     <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Conseil</p><p class="text-sm text-slate-600 mt-3">Ajoutez une belle affiche et des catégories de billets claires pour améliorer la présentation de vos événements.</p></div>
                 </div>
             </section>
@@ -147,9 +150,19 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
                                 </select>
                             </div>
                             <div class="grid grid-cols-2 gap-4">
-                                <select id="event-type" onchange="toggleFreeEventMode()" class="bg-slate-50 border rounded-xl p-3 text-sm"><option value="PAID">Événement payant</option><option value="FREE">Événement gratuit</option></select>
+                                <select id="event-type" onchange="toggleFreeEventMode()" class="bg-slate-50 border rounded-xl p-3 text-sm"><option value="PAID">Événement payant</option><option value="FREE">Événement gratuit</option></select> <label class="block text-xs font-bold text-slate-500 uppercase mt-3">Maximum de billets par commande</label><input id="event-max-order" type="number" min="1" max="50" value="10" class="w-full bg-white border rounded-xl p-2.5 text-sm" />
                                 <input type="date" id="event-date" required class="bg-slate-50 border rounded-xl p-3 text-sm">
-                                <input type="text" id="event-location" required placeholder="Lieu" class="bg-slate-50 border rounded-xl p-3 text-sm">
+                                <input type="text" id="event-location" required placeholder="Lieu (résumé)" class="bg-slate-50 border rounded-xl p-3 text-sm">
+                            </div>
+                            <div class="grid md:grid-cols-3 gap-4">
+                                <input type="text" id="event-venue" placeholder="Nom du lieu / salle" class="bg-slate-50 border rounded-xl p-3 text-sm">
+                                <input type="text" id="event-city" required placeholder="Ville" class="bg-slate-50 border rounded-xl p-3 text-sm">
+                                <input type="text" id="event-address" placeholder="Adresse / quartier" class="bg-slate-50 border rounded-xl p-3 text-sm">
+                            </div>
+                            <div class="bg-slate-50 border rounded-2xl p-4 space-y-3">
+                                <div class="flex items-center justify-between gap-3"><div><h4 class="font-black text-slate-800">📍 Position GPS</h4><p class="text-xs text-slate-500">Cliquez sur la carte pour placer le lieu exact, ou utilisez votre position.</p></div><button type="button" onclick="useMyLocation()" class="bg-slate-900 text-white px-3 py-2 rounded-xl text-xs font-bold">Ma position</button></div>
+                                <div id="event-map"></div>
+                                <div class="grid grid-cols-2 gap-3"><input id="event-latitude" readonly class="bg-white border rounded-xl p-2.5 text-xs" placeholder="Latitude"><input id="event-longitude" readonly class="bg-white border rounded-xl p-2.5 text-xs" placeholder="Longitude"></div>
                             </div>
                             <textarea id="event-desc" placeholder="Description de l'événement..." rows="3" class="w-full bg-slate-50 border rounded-xl p-3 text-sm"></textarea>
                             <div><label class="block text-xs font-bold text-slate-700 uppercase mb-1">Affiche de l’événement</label><input type="file" id="event-image" accept="image/png,image/jpeg,image/webp,image/gif" class="w-full bg-slate-50 border rounded-xl p-3 text-sm"><p class="text-[11px] text-slate-400 mt-1">Maximum 1,5 Mo.</p></div>
@@ -191,7 +204,7 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
 
 
 <section id="org-sec-participants" class="hidden space-y-6 max-w-6xl"><div><h1 class="text-2xl font-black text-slate-900">Participants</h1><p class="text-sm text-slate-500">Recherchez les participants et vérifiez les entrées synchronisées.</p></div><div class="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col md:flex-row gap-3"><select id="org-participant-event" class="border rounded-xl px-4 py-3 flex-1"></select><input id="org-participant-search" oninput="filterOrgParticipants()" class="border rounded-xl px-4 py-3 flex-1" placeholder="Nom, email ou ID billet..."><button onclick="loadOrgParticipants()" class="bg-[#F97316] text-white font-bold px-5 py-3 rounded-xl">Actualiser</button></div><div class="bg-white rounded-2xl border border-slate-200 overflow-auto"><table class="w-full text-left text-sm"><thead class="bg-slate-50"><tr><th class="p-4">Participant</th><th class="p-4">ID billet</th><th class="p-4">Type</th><th class="p-4">Statut</th><th class="p-4">Validation</th></tr></thead><tbody id="org-participants-list"></tbody></table></div></section>
-<section id="org-sec-reports" class="hidden space-y-6 max-w-6xl"><div><h1 class="text-2xl font-black text-slate-900">Rapports</h1><p class="text-sm text-slate-500">Synthèse de vos événements et export des données.</p></div><div class="bg-white rounded-2xl border p-5 flex gap-3"><select id="org-report-event" class="border rounded-xl px-4 py-3 flex-1"></select><button onclick="generateOrgReport()" class="bg-[#F97316] text-white font-bold px-5 py-3 rounded-xl">Générer le rapport</button><button onclick="downloadCSV('/api/organizers/export/tickets')" class="bg-slate-900 text-white font-bold px-5 py-3 rounded-xl">Exporter CSV</button></div><div id="org-report-box" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4"></div></section>
+<section id="org-sec-reports" class="hidden space-y-6 max-w-6xl"><div><h1 class="text-2xl font-black text-slate-900">Rapports</h1><p class="text-sm text-slate-500">Synthèse de vos événements et export des données.</p></div><div class="bg-white rounded-2xl border p-5 flex gap-3"><select id="org-report-event" class="border rounded-xl px-4 py-3 flex-1"></select><button onclick="generateOrgReport()" class="bg-[#F97316] text-white font-bold px-5 py-3 rounded-xl">Générer le rapport</button><button onclick="downloadCSV('/api/organizers/export/tickets')" class="bg-slate-900 text-white font-bold px-5 py-3 rounded-xl">Exporter CSV</button></div><div id="org-report-box" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4"></div><div class="bg-white rounded-2xl border p-5"><div class="flex items-center justify-between mb-3"><h3 class="font-black text-slate-800">Détail par catégorie</h3><button onclick="downloadOrgReport()" class="bg-slate-900 text-white font-bold px-4 py-2 rounded-xl text-sm">Imprimer / PDF</button></div><div id="org-report-extra" class="text-sm text-slate-600">Générez un rapport pour voir le détail.</div></div></section>
 
             <!-- CODES PROMO -->
             <section id="org-sec-promos" class="hidden space-y-6 max-w-6xl">
@@ -318,5 +331,5 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
     <!-- Logique de gestion -->
     <script src="config.js"></script>
     <script src="app.js"></script>
-</body>
+<script>if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(console.error));</script></body>
 </html>

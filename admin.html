@@ -79,7 +79,7 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
 .fa-solid,.fa-regular,.fa{font-family:"Font Awesome 6 Free" !important}
 .fa-brands{font-family:"Font Awesome 6 Brands" !important}
 </style>
-</head>
+<link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#06132f"></head>
 <body class="h-full flex overflow-hidden font-sans text-slate-100 bg-[#07152f]">
 
     <!-- Toast Notification Container -->
@@ -427,5 +427,5 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
     <!-- Script de logique JS -->
     <script src="config.js"></script>
     <script src="admin.js"></script>
-</body>
+<script>if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(console.error));</script></body>
 </html>

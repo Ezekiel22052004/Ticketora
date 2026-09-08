@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ticketora - Billetterie & Événements</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#06132f">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+.pwa-install-btn{position:fixed;right:16px;bottom:18px;z-index:120;display:none;align-items:center;gap:9px;background:#06132f;color:#fff;border:1px solid rgba(249,115,22,.45);box-shadow:0 14px 35px rgba(0,0,0,.22);border-radius:999px;padding:12px 16px;font-weight:800;font-size:13px}
+.pwa-install-btn.show{display:flex}
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -46,6 +52,7 @@
 </style>
 </head>
 <body class="bg-white text-slate-900 min-h-screen">
+    <button id="pwa-install" class="pwa-install-btn" type="button"><i class="fa-solid fa-download"></i><span>Installer Ticketora</span></button>
 
     <!-- NAVIGATION PUBLIQUE — DESIGN CONSERVÉ -->
     <nav class="public-nav sticky top-0 z-50 px-6 md:px-8 flex items-center justify-between border-b border-white/5">
@@ -123,8 +130,16 @@
                 <button onclick="showSection('client-events');document.getElementById('all-events-grid').scrollIntoView({behavior:'smooth',block:'start'})" class="bg-white hover:bg-slate-100 text-slate-700 font-bold px-5 py-3 rounded-xl shadow-sm border border-slate-200 transition">Voir tout</button>
             </div>
 
-            <div id="upcoming-events-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            <div id="upcoming-events-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6"></div>
             <p id="upcoming-events-empty" class="hidden text-slate-500 font-semibold py-8">Aucun événement publié pour le moment.</p>
+
+            <div class="mt-12">
+                <div class="flex items-end justify-between gap-4 mb-5">
+                    <div><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Popularité</p><h3 class="text-2xl md:text-3xl font-black text-[#071a3b]">🔥 Tendances</h3><p class="text-slate-500 font-semibold mt-1">Les événements qui attirent le plus l’attention.</p></div>
+                    <button onclick="showSection('client-events');document.getElementById('all-events-grid').scrollIntoView({behavior:'smooth'})" class="text-xs sm:text-sm font-black text-[#F97316]">Explorer tout →</button>
+                </div>
+                <div id="trending-events-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6"></div>
+            </div>
         </div>
     </section>
 
@@ -137,17 +152,16 @@
                     <h2 class="text-3xl font-black text-[#071a3b]">Tous les événements</h2>
                     <p class="text-slate-500 font-semibold">Recherchez et choisissez votre billet.</p>
                 </div>
-                <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-                    <input type="text" id="search-event" oninput="filterEvents()" placeholder="Rechercher..." class="w-full sm:w-64 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-200">
-                    <select id="filter-category" onchange="filterEvents()" class="bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:outline-none">
-                        <option value="ALL">Toutes catégories</option>
-                        <option value="Concert">Concert</option>
-                        <option value="Festival">Festival</option>
-                        <option value="Formation">Formation</option>
-                    </select>
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 w-full lg:w-auto">
+                    <input type="text" id="search-event" oninput="filterEvents()" placeholder="Nom, ville..." class="col-span-2 sm:col-span-3 lg:col-span-2 w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-200">
+                    <select id="filter-city" onchange="filterEvents()" class="bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-800 focus:outline-none"><option value="ALL">Toutes les villes</option></select>
+                    <select id="filter-category" onchange="filterEvents()" class="bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-800 focus:outline-none"><option value="ALL">Toutes catégories</option></select>
+                    <select id="filter-date" onchange="filterEvents()" class="bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-800 focus:outline-none"><option value="ALL">Toutes dates</option><option value="TODAY">Aujourd’hui</option><option value="WEEK">Cette semaine</option><option value="MONTH">Ce mois</option></select>
+                    <select id="filter-type" onchange="filterEvents()" class="bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-800 focus:outline-none"><option value="ALL">Gratuit + Payant</option><option value="FREE">Gratuit</option><option value="PAID">Payant</option></select>
+                    <select id="filter-sort" onchange="filterEvents()" class="bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-800 focus:outline-none"><option value="date">Date</option><option value="trending">Tendance</option><option value="likes">Plus aimés</option></select>
                 </div>
             </div>
-            <div id="all-events-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            <div id="all-events-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6"></div>
         </div>
     </section>
 
@@ -183,8 +197,11 @@
                 <h3 class="text-xl font-bold text-white" id="modal-event-title">Achat de Billet</h3>
                 <p class="text-xs text-slate-400" id="modal-event-price"></p>
                 <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">Nom complet</label><input type="text" id="buy-name" required placeholder="Ex: Marc Koffi" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white"></div>
+                <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">WhatsApp</label><input type="tel" id="buy-phone" required placeholder="Ex: +228 90 00 00 00" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white"></div>
                 <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">Email</label><input type="email" id="buy-email" required placeholder="nom@exemple.com" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white"></div>
                 <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">Type de billet</label><select id="buy-ticket-type" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white"></select></div>
+                <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-xl px-4 py-3"><div><p class="text-xs font-bold text-slate-300 uppercase">Quantité</p><p id="buy-stock-note" class="text-[11px] text-slate-500 mt-1"></p></div><div class="flex items-center gap-3"><button type="button" onclick="changeBuyQuantity(-1)" class="w-9 h-9 rounded-lg bg-slate-700 text-white font-black">−</button><span id="buy-quantity" class="w-8 text-center font-black text-white">1</span><button type="button" onclick="changeBuyQuantity(1)" class="w-9 h-9 rounded-lg bg-slate-700 text-white font-black">+</button></div></div>
+                <div id="buy-total-box" class="rounded-xl bg-slate-900 border border-slate-700 p-4 text-sm"></div>
                 <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">Code Promo (Optionnel)</label><div class="flex gap-2"><input type="text" id="buy-promo" placeholder="Ex: JEUNES10" class="uppercase w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white"><button type="button" onclick="applyPromoCode()" class="bg-slate-700 text-xs px-3 py-2 rounded-xl font-bold hover:bg-slate-600 text-white">Appliquer</button></div><div id="buy-promo-message" class="text-xs mt-2"></div></div>
                 <button onclick="processPayment()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2"><i class="fa-solid fa-credit-card"></i> Payer avec Tchin</button>
             </div>
@@ -267,8 +284,15 @@
     </a>
 
     <footer class="bg-[#06132f] text-white px-6 md:px-8 py-10">
-        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-5">
-            <div class="flex items-center gap-3"><img src="logo.png" class="w-9 h-9 object-contain" alt="Ticketora"><span class="font-black text-xl">Ticket<span class="text-[#F97316]">ora</span></span></div>
+        <div class="max-w-7xl mx-auto grid md:grid-cols-3 items-center gap-7">
+            <div class="flex items-center gap-3 justify-center md:justify-start"><img src="logo.png" class="w-10 h-10 object-contain" alt="Ticketora"><span class="font-black text-xl">Ticket<span class="text-[#F97316]">ora</span></span></div>
+            <div class="text-center">
+                <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Suivez Ticketora</p>
+                <div class="flex justify-center gap-3">
+                    <a href="https://www.facebook.com/profile.php?id=61594424300386" target="_blank" rel="noopener noreferrer" aria-label="Ticketora sur Facebook" class="w-11 h-11 rounded-full bg-white/10 hover:bg-blue-600 flex items-center justify-center transition" title="Facebook Ticketora"><i class="fa-brands fa-facebook-f text-lg"></i></a>
+                    <a href="https://whatsapp.com/channel/0029VbDQmGb0VycJ7XIVeJ27" target="_blank" rel="noopener noreferrer" aria-label="Chaîne WhatsApp Ticketora" class="w-11 h-11 rounded-full bg-white/10 hover:bg-emerald-500 flex items-center justify-center transition" title="Chaîne WhatsApp Ticketora"><i class="fa-brands fa-whatsapp text-lg"></i></a>
+                </div>
+            </div>
             <div class="text-center md:text-right"><p class="text-slate-400 text-sm">© 2026 Ticketora. Réservez. Vivez. Profitez.</p><div class="flex flex-wrap justify-center md:justify-end gap-3 mt-2 text-[11px] text-slate-500"><a href="politique-confidentialite.html">Confidentialité</a><a href="cgu.html">CGU</a><a href="conditions-vente.html">Vente & billetterie</a><a href="remboursement.html">Remboursement</a><a href="mentions-legales.html">Mentions légales</a></div></div>
         </div>
     </footer>
@@ -309,6 +333,14 @@ function startHeroTypewriter(){
 function openParticipantRegister(){const m=document.getElementById('participant-modal');document.getElementById('participant-modal-title').innerText='Créer un compte';document.getElementById('participant-name').classList.remove('hidden');m.classList.remove('hidden');m.classList.add('flex')}
 function openParticipantLogin(){const m=document.getElementById('participant-modal');document.getElementById('participant-modal-title').innerText='Connexion';document.getElementById('participant-name').classList.add('hidden');m.classList.remove('hidden');m.classList.add('flex')}
 window.addEventListener('DOMContentLoaded',startHeroTypewriter);
+</script>
+
+<script>
+let deferredPwaPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPwaPrompt=e;document.getElementById('pwa-install')?.classList.add('show');});
+document.getElementById('pwa-install')?.addEventListener('click',async()=>{if(!deferredPwaPrompt)return;deferredPwaPrompt.prompt();await deferredPwaPrompt.userChoice;deferredPwaPrompt=null;document.getElementById('pwa-install')?.classList.remove('show');});
+window.addEventListener('appinstalled',()=>document.getElementById('pwa-install')?.classList.remove('show'));
+if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(console.error));
 </script>
 </body>
 </html>

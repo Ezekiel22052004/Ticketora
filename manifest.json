@@ -1,0 +1,17 @@
+{
+  "name": "Ticketora",
+  "short_name": "Ticketora",
+  "description": "Ticketora — Billetterie et découverte d'événements",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#06132f",
+  "theme_color": "#06132f",
+  "lang": "fr",
+  "icons": [
+    {"src":"/icons/icon-192.png","sizes":"192x192","type":"image/png"},
+    {"src":"/icons/icon-512.png","sizes":"512x512","type":"image/png"},
+    {"src":"/icons/icon-maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}
+  ]
+}
