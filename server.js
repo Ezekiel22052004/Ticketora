@@ -42,6 +42,7 @@ app.use(helmet({
 }));
 app.use(cors({origin:(origin,cb)=>{if(!origin||allowedOrigins.has(origin)) return cb(null,true); return cb(new Error('Origin non autorisée'));},credentials:true}));
 app.use(rateLimit({windowMs:60*1000,max:180,standardHeaders:true,legacyHeaders:false}));
+const ticketLookupLimiter=rateLimit({windowMs:15*60*1000,max:12,standardHeaders:true,legacyHeaders:false,message:{success:false,message:'Trop de tentatives. Réessayez dans quelques minutes.'}});
 
 // Webhook Tchin: x-www-form-urlencoded, avant express.json.
 app.post('/api/webhooks/tchin',express.urlencoded({extended:true,limit:'100kb'}),handleTchinWebhook);
@@ -498,6 +499,13 @@ app.get('/api/payments/:token/status',asyncRoute(async(req,res)=>{const token=cl
 app.get('/api/payments/reference/:reference/status',asyncRoute(async(req,res)=>{const reference=clean(req.params.reference,255);const or=await pool.query('SELECT o.*,e.title event_title FROM orders o JOIN events e ON e.id=o.event_id WHERE o.reference=$1',[reference]);if(!or.rows.length)return res.status(404).json({success:false,message:'Commande introuvable.'});let o=or.rows[0];if(o.status==='PAID'){const tr=await pool.query('SELECT code,event_title,event_date,event_location,ticket_type,customer_name,customer_email,customer_phone FROM tickets WHERE order_id=$1 ORDER BY id',[o.id]);return res.json({success:true,status:'completed',paid:true,quantity:Number(o.quantity||tr.rows.length||1),tickets:tr.rows,ticket:tr.rows[0]||null});}if(!o.tchin_token)return res.status(409).json({success:false,message:'Paiement Tchin non initialisé.'});let td=await tchinRequest(`/payments/${encodeURIComponent(o.tchin_token)}/status`,{method:'GET',headers:{'Content-Type':'application/json'}});const status=td.status||td.data?.status||'pending';if(status==='completed'&&o.status!=='PAID'){try{const tickets=await fulfillOrder(o.id,{amount:td.amount??td.data?.amount??o.total_amount,mode:td.mode||td.data?.mode||process.env.TCHIN_ENV,reference:td.reference||td.data?.reference||o.tchin_reference||null});return res.json({success:true,status:'completed',paid:true,quantity:Number(o.quantity||tickets.length),tickets:tickets.map(ticket=>({code:ticket.code,event_title:ticket.event_title,event_date:ticket.event_date,event_location:ticket.event_location,ticket_type:ticket.ticket_type,customer_name:ticket.customer_name,customer_email:ticket.customer_email,customer_phone:ticket.customer_phone})),ticket:tickets[0]||null});}catch(e){return res.json({success:true,status:'completed',paid:false,message:e.message});}}res.json({success:true,status:o.status==='PAID'?'completed':status,paid:o.status==='PAID',ticket:null});}));
 
 // ---------- BILLETS ----------
+app.post('/api/tickets/lookup',ticketLookupLimiter,asyncRoute(async(req,res)=>{
+  const name=clean(req.body.name,255),email=clean(req.body.email,255).toLowerCase(),phone=clean(req.body.phone,60);
+  if(!name||!email||!phone)return res.status(400).json({success:false,message:'Nom, email et numéro de téléphone sont obligatoires.'});
+  const r=await pool.query(`SELECT t.id,t.code,t.event_id,t.org_id,t.event_title,t.event_date,t.event_location,t.ticket_type,t.customer_name,t.customer_email,t.customer_phone,t.total_amount,t.used,t.used_at,t.created_at,o.reference,o.status AS order_status,o.tchin_status FROM tickets t JOIN orders o ON o.id=t.order_id WHERE t.issued_by_admin=false AND o.status='PAID' AND o.tchin_status='completed' AND t.customer_name=$1 AND LOWER(t.customer_email)=LOWER($2) AND t.customer_phone=$3 ORDER BY t.id DESC`,[name,email,phone]);
+  if(!r.rows.length)return res.status(404).json({success:false,message:'Aucun billet payé ne correspond exactement à ces trois informations.'});
+  res.json({success:true,message:'Informations vérifiées. Vos billets sont disponibles.',tickets:r.rows});
+}));
 app.get('/api/tickets/verify/:code',asyncRoute(async(req,res)=>{const code=clean(req.params.code,32).toUpperCase();const r=await pool.query('SELECT code,event_title,event_date,event_location,ticket_type,customer_name,used,used_at FROM tickets WHERE UPPER(code)=UPPER($1)',[code]);if(!r.rows.length)return res.status(404).json({success:false,status:'INVALID',message:'BILLET NON VALIDE'});const t=r.rows[0];res.json({success:true,status:t.used?'USED':'VALID',message:t.used?'BILLET DÉJÀ UTILISÉ':'BILLET VALIDE',ticket:t});}));
 async function scanTicket(code,orgId){const c=await pool.connect();try{await c.query('BEGIN');const r=await c.query('SELECT t.*,e.title event_title,e.date event_date,e.location event_location FROM tickets t JOIN events e ON e.id=t.event_id WHERE UPPER(t.code)=UPPER($1) FOR UPDATE',[code]);if(!r.rows.length){await c.query('ROLLBACK');return {http:404,data:{success:false,status:'INVALID',message:'BILLET NON VALIDE'}};}const t=r.rows[0];if(String(t.org_id)!==String(orgId)){await c.query('ROLLBACK');return {http:403,data:{success:false,status:'INVALID',message:'Ce billet ne correspond pas à cet organisateur.'}};}if(t.used){await c.query('ROLLBACK');return {http:409,data:{success:false,status:'USED',message:'BILLET DÉJÀ UTILISÉ',ticket:t}};}const u=await c.query('UPDATE tickets SET used=true,used_at=NOW(),scan_count=scan_count+1 WHERE id=$1 RETURNING *',[t.id]);await c.query('COMMIT');return {http:200,data:{success:true,status:'VALID',message:'ENTRÉE AUTORISÉE',ticket:u.rows[0]}};}catch(e){try{await c.query('ROLLBACK')}catch{};throw e}finally{c.release();}}
 app.post('/api/tickets/scan',requireOrg,asyncRoute(async(req,res)=>{const code=clean(req.body.code,32).toUpperCase();if(!code)return res.status(400).json({success:false,message:'Code requis.'});const x=await scanTicket(code,req.session.user.id);res.status(x.http).json(x.data);}));
@@ -711,7 +719,15 @@ app.post('/api/admin/withdrawals/:id/status',requireAdmin,asyncRoute(async(req,r
   res.json({success:true,withdrawal:r.rows[0]});
 }));
 app.get('/api/admin/logs',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query('SELECT * FROM audit_logs ORDER BY id DESC LIMIT 200');res.json({success:true,logs:r.rows});}));
-app.get('/api/admin/payments',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query(`SELECT t.*,o.reference,o.tchin_token,o.tchin_status FROM tickets t JOIN orders o ON o.id=t.order_id WHERE t.issued_by_admin=false ORDER BY t.id DESC`);res.json({success:true,payments:r.rows});}));
+app.get('/api/admin/payments',requireAdmin,asyncRoute(async(req,res)=>{
+  const eventId=Number(req.query.eventId||0),organizerId=Number(req.query.organizerId||0),q=String(req.query.q||'').trim().slice(0,120),from=String(req.query.from||'').slice(0,10),to=String(req.query.to||'').slice(0,10);
+  const args=[];let where=`t.issued_by_admin=false AND o.status='PAID' AND o.tchin_status='completed'`;
+  if(eventId){args.push(eventId);where+=` AND t.event_id=$${args.length}`;}
+  if(organizerId){args.push(organizerId);where+=` AND t.org_id=$${args.length}`;}
+  if(q){args.push('%'+q.toLowerCase()+'%');where+=` AND (LOWER(t.customer_name) LIKE $${args.length} OR LOWER(t.customer_email) LIKE $${args.length} OR LOWER(t.customer_phone) LIKE $${args.length} OR LOWER(t.code) LIKE $${args.length} OR LOWER(o.reference) LIKE $${args.length})`;}if(from){args.push(from);where+=` AND t.created_at::date >= $${args.length}::date`;}if(to){args.push(to);where+=` AND t.created_at::date <= $${args.length}::date`;}
+  const r=await pool.query(`SELECT t.*,o.reference,o.tchin_token,o.tchin_status,o.status AS order_status,e.title AS event_title,org.nom AS organizer_name,org.prenom AS organizer_prenom FROM tickets t JOIN orders o ON o.id=t.order_id JOIN events e ON e.id=t.event_id LEFT JOIN organizers org ON org.id=t.org_id WHERE ${where} ORDER BY t.id DESC`,args);
+  res.json({success:true,payments:r.rows});
+}));
 app.get('/api/admin/overview',requireAdmin,asyncRoute(async(req,res)=>{
   const [rev,tix,ev,pending,sales,orgs,users,paystats,daily,cats]=await Promise.all([
     pool.query('SELECT COALESCE(SUM(admin_commission),0)::int revenue,COALESCE(SUM(total_amount),0)::int volume FROM tickets WHERE issued_by_admin=false'),
@@ -898,7 +914,9 @@ app.get('/api/cagnottes/contributions/:token/status',asyncRoute(async(req,res)=>
 
 // ---------- PARTICIPANTS / EXPORTS / RAPPORTS V3 ----------
 app.get('/api/organizers/events/:id/participants',requireOrg,asyncRoute(async(req,res)=>{
- const id=Number(req.params.id);const r=await pool.query(`SELECT t.id,t.code AS ticket_id,t.customer_name,t.customer_email,t.ticket_type,t.total_amount,t.used,t.used_at,t.created_at FROM tickets t WHERE t.event_id=$1 AND t.org_id=$2 AND t.issued_by_admin=false ORDER BY t.id DESC`,[id,req.session.user.id]);res.json({success:true,participants:r.rows});
+ const id=Number(req.params.id);
+ const r=await pool.query(`SELECT t.id,t.code AS ticket_id,t.customer_name,t.customer_email,t.customer_phone,t.ticket_type,t.total_amount,t.used,t.used_at,t.created_at,o.reference,o.status AS order_status,o.tchin_status FROM tickets t JOIN orders o ON o.id=t.order_id WHERE t.event_id=$1 AND t.org_id=$2 AND t.issued_by_admin=false AND o.status='PAID' AND o.tchin_status='completed' ORDER BY t.id DESC`,[id,req.session.user.id]);
+ res.json({success:true,participants:r.rows});
 }));
 app.get('/api/organizers/events/:id/report',requireOrg,asyncRoute(async(req,res)=>{
  const id=Number(req.params.id);const ev=await pool.query('SELECT * FROM events WHERE id=$1 AND org_id=$2',[id,req.session.user.id]);if(!ev.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});
@@ -909,10 +927,23 @@ app.get('/api/organizers/events/:id/report',requireOrg,asyncRoute(async(req,res)
 }));
 function csvCell(v){const s=String(v??'');return '"'+s.replace(/"/g,'""')+'"';}
 async function exportTickets(req,res,scope){
- const id=req.params.id?Number(req.params.id):null;let q=`SELECT t.code AS ticket_id,t.customer_name AS participant,t.customer_email,t.ticket_type,t.total_amount,t.used AS validated,t.used_at,t.created_at,e.title AS event,e.date FROM tickets t JOIN events e ON e.id=t.event_id WHERE t.issued_by_admin=false`;const args=[];
- if(scope==='org'){q+=' AND t.org_id=$1';args.push(req.session.user.id);if(id){q+=' AND t.event_id=$2';args.push(id);}} else if(id){q+=' AND t.event_id=$1';args.push(id);}q+=' ORDER BY t.id DESC';
- const r=await pool.query(q,args);const headers=['ticket_id','participant','customer_email','ticket_type','total_amount','validated','used_at','created_at','event','date'];res.type('text/csv; charset=utf-8').set('Content-Disposition','attachment; filename="ticketora-tickets.csv"').send('\ufeff'+headers.join(';')+'\n'+r.rows.map(x=>headers.map(h=>csvCell(x[h])).join(';')).join('\n'));
+  const id=req.params.id?Number(req.params.id):null;
+  let q=`SELECT t.code AS ticket_id,t.customer_name AS participant,t.customer_email,t.customer_phone,t.ticket_type,t.total_amount,t.used AS validated,t.used_at,t.created_at,e.title AS event,e.date,o.reference,o.status AS order_status,o.tchin_status FROM tickets t JOIN events e ON e.id=t.event_id JOIN orders o ON o.id=t.order_id WHERE t.issued_by_admin=false AND o.status='PAID' AND o.tchin_status='completed'`;
+  const args=[];
+  if(scope==='org'){q+=' AND t.org_id=$1';args.push(req.session.user.id);if(id){q+=' AND t.event_id=$2';args.push(id);}}
+  else if(id){q+=' AND t.event_id=$1';args.push(id);}
+  q+=' ORDER BY t.id DESC';
+  const r=await pool.query(q,args);
+  const headers=['ticket_id','reference','participant','customer_email','customer_phone','ticket_type','total_amount','validated','used_at','created_at','event','date','order_status','tchin_status'];
+  res.type('text/csv; charset=utf-8').set('Content-Disposition','attachment; filename="ticketora-tickets.csv"').send('\ufeff'+headers.join(';')+'\n'+r.rows.map(x=>headers.map(h=>csvCell(x[h])).join(';')).join('\n'));
 }
+app.get('/api/organizers/tickets',requireOrg,asyncRoute(async(req,res)=>{
+  const eventId=Number(req.query.eventId||0);const args=[req.session.user.id];
+  let where=`t.org_id=$1 AND t.issued_by_admin=false AND o.status='PAID' AND o.tchin_status='completed'`;
+  if(eventId){args.push(eventId);where+=` AND t.event_id=$2`;}
+  const r=await pool.query(`SELECT t.id,t.code,t.event_id,t.org_id,t.event_title,t.event_date,t.event_location,t.ticket_type,t.customer_name,t.customer_email,t.customer_phone,t.total_amount,t.used,t.used_at,t.created_at,o.reference,o.status AS order_status,o.tchin_status FROM tickets t JOIN orders o ON o.id=t.order_id WHERE ${where} ORDER BY t.id DESC`,args);
+  res.json({success:true,tickets:r.rows});
+}));
 app.get('/api/organizers/export/tickets',requireOrg,asyncRoute(async(req,res)=>exportTickets(req,res,'org')));
 app.get('/api/organizers/events/:id/export',requireOrg,asyncRoute(async(req,res)=>exportTickets(req,res,'org')));
 app.get('/api/admin/export/tickets',requireAdmin,asyncRoute(async(req,res)=>exportTickets(req,res,'admin')));

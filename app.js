@@ -46,8 +46,12 @@ function ticketImageUrl(code){return `${API}/api/tickets/${encodeURIComponent(co
 async function downloadTicketImage(code){
   try{
     const r=await fetch(ticketImageUrl(code),{credentials:'include'});if(!r.ok)throw new Error('Téléchargement impossible.');
-    const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`Ticketora_${code}.png`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500);
-  }catch(e){window.open(ticketImageUrl(code),'_blank');}
+    const blob=await r.blob(),url=URL.createObjectURL(blob),img=new Image();img.src=url;
+    await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;});
+    const c=document.createElement('canvas');c.width=img.naturalWidth||1200;c.height=img.naturalHeight||560;c.getContext('2d').drawImage(img,0,0);
+    const jpg=await new Promise(resolve=>c.toBlob(resolve,'image/jpeg',.96));if(!jpg)throw new Error('Conversion JPEG impossible.');
+    const a=document.createElement('a');a.href=URL.createObjectURL(jpg);a.download=`Ticketora_${code}.jpg`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(a.href);URL.revokeObjectURL(url);
+  }catch(e){alert(e.message||'Téléchargement JPEG impossible.');}
 }
 function openWhatsAppTicketData(encoded){try{openWhatsAppTicket(JSON.parse(decodeURIComponent(encoded)));}catch{alert('Impossible de préparer le partage WhatsApp.');}}
 function openWhatsAppTicket(ticket){
@@ -64,6 +68,78 @@ function renderTickets(tickets,free=false){
 
 
 function downloadPDF(){const el=$('ticket-pdf-area');if(!el)return;html2pdf().set({margin:0,filename:`Billet_${$('ticket-code-display')?.innerText||'Ticketora'}.pdf`,image:{type:'jpeg',quality:.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff'},jsPDF:{unit:'px',format:[1200,560],orientation:'landscape'}}).from(el).save();}
+async 
+async function lookupMyTickets(){
+  const name=$('lookup-ticket-name')?.value.trim()||'';
+  const email=$('lookup-ticket-email')?.value.trim()||'';
+  const phone=$('lookup-ticket-phone')?.value.trim()||'';
+  const box=$('lookup-ticket-result');
+  if(!name||!email||!phone){if(box)box.innerHTML='<div class="p-4 rounded-2xl bg-amber-50 text-amber-700 font-bold text-sm">Veuillez renseigner le nom, l’email et le numéro de téléphone.</div>';return;}
+  if(box)box.innerHTML='<div class="p-5 rounded-2xl bg-slate-50 text-slate-500 text-center"><span class="text-2xl">⏳</span><p class="mt-2 font-bold">Vérification des trois informations…</p></div>';
+  try{
+    const d=await api('/api/tickets/lookup',{method:'POST',body:JSON.stringify({name,email,phone})});
+    const rows=Array.isArray(d.tickets)?d.tickets:[];
+    if(!rows.length)throw new Error('Aucun billet payé ne correspond exactement à ces trois informations.');
+    renderLookupTickets(rows);
+  }catch(e){
+    if(box)box.innerHTML=`<div class="p-5 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700"><p class="font-black">❌ Informations non reconnues</p><p class="text-sm mt-1">${esc(e.message||'Aucun billet trouvé.')}</p><p class="text-xs mt-2 text-rose-500">Les trois informations doivent correspondre exactement à un billet payé.</p></div>`;
+  }
+}
+function lookupTicketImageUrl(code){return `${API}/api/tickets/${encodeURIComponent(code)}/image`;}
+async function downloadTicketPDF(code){
+  try{
+    if(typeof html2pdf!=='function')throw new Error('Le module PDF n’est pas chargé.');
+    const r=await fetch(lookupTicketImageUrl(code),{credentials:'include'});
+    if(!r.ok)throw new Error('Billet introuvable.');
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const img=new Image();img.crossOrigin='anonymous';
+    img.onload=()=>{
+      const wrap=document.createElement('div');wrap.style.cssText='width:1200px;background:#fff;padding:0;margin:0;';
+      img.style.cssText='display:block;width:1200px;height:auto;margin:0;';
+      wrap.appendChild(img);document.body.appendChild(wrap);
+      html2pdf().set({margin:0,filename:`Ticketora_${code}.pdf`,image:{type:'jpeg',quality:.98},html2canvas:{scale:1,useCORS:true,backgroundColor:'#fff'},jsPDF:{unit:'px',format:[1200,Math.max(560,Math.round(img.naturalHeight||560))],orientation:'landscape'}}).from(wrap).save().then(()=>{wrap.remove();URL.revokeObjectURL(url);});
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);throw new Error('Impossible de préparer le PDF.');};
+    img.src=url;
+  }catch(e){alert(e.message||'Téléchargement PDF impossible.');}
+}
+function renderLookupTickets(tickets){
+  const box=$('lookup-ticket-result');if(!box)return;
+  const rows=Array.isArray(tickets)?tickets:[];
+  box.innerHTML=`<div class="space-y-5"><div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-5"><p class="text-emerald-700 font-black text-lg">✅ Informations vérifiées</p><p class="text-sm text-emerald-600 mt-1">${rows.length} billet(s) payé(s) trouvé(s). Vos billets sont disponibles.</p></div>${rows.map((t,i)=>`<div class="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden"><div class="p-4 sm:p-5 flex flex-wrap items-center justify-between gap-2"><div><p class="text-xs text-slate-400 font-black uppercase">Billet ${i+1}/${rows.length}</p><h3 class="text-xl font-black text-[#071a3b] mt-1">${esc(t.event_title||'Événement')}</h3><p class="text-sm text-slate-500 mt-1">${esc(t.ticket_type||'Standard')} · ${esc(t.code||'')}</p></div><span class="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-black">PAIEMENT CONFIRMÉ</span></div><div class="p-3 sm:p-5 pt-0"><img src="${lookupTicketImageUrl(t.code)}" class="w-full rounded-2xl border border-slate-100" alt="Billet ${esc(t.code)}"></div><div class="grid sm:grid-cols-2 gap-3 p-4 sm:p-5 pt-0"><button onclick="downloadTicketPDF('${esc(t.code)}')" class="bg-[#071a3b] text-white font-black py-3 rounded-xl"><i class="fa-solid fa-file-pdf mr-2"></i>Télécharger PDF</button><button onclick="downloadTicketImage('${esc(t.code)}')" class="bg-[#F97316] text-white font-black py-3 rounded-xl"><i class="fa-solid fa-image mr-2"></i>Télécharger JPEG</button></div></div>`).join('')}</div>`;
+}
+function downloadTicketsZipClient(tickets,ownerLabel='Ticketora'){
+  if(!window.JSZip){alert('Le module ZIP n’est pas chargé.');return;}
+  (async()=>{
+    const rows=Array.isArray(tickets)?tickets:[];
+    if(!rows.length)return alert('Aucun billet à télécharger.');
+    const zip=new JSZip(),folder=zip.folder('billets-ticketora');
+    for(let i=0;i<rows.length;i++){
+      const t=rows[i];
+      try{
+        const r=await fetch(lookupTicketImageUrl(t.code),{credentials:'include'});
+        if(!r.ok)continue;
+        const blob=await r.blob();
+        const cJ=document.createElement('canvas');const iJ=new Image();const uJ=URL.createObjectURL(blob);iJ.src=uJ;await new Promise((res,rej)=>{iJ.onload=res;iJ.onerror=rej;});cJ.width=iJ.naturalWidth||1200;cJ.height=iJ.naturalHeight||560;cJ.getContext('2d').drawImage(iJ,0,0);const jpgBlob=await new Promise(resolve=>cJ.toBlob(resolve,'image/jpeg',.96));folder.file(`JPEG/${t.code}.jpg`,jpgBlob);URL.revokeObjectURL(uJ);
+        const url=URL.createObjectURL(blob);
+        const img=new Image();img.src=url;await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;});
+        const wrap=document.createElement('div');wrap.style.cssText='position:fixed;left:-100000px;top:0;width:1200px;background:#fff;';
+        img.style.cssText='display:block;width:1200px;height:auto;';
+        wrap.appendChild(img);document.body.appendChild(wrap);
+        if(window.jspdf?.jsPDF){
+          const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'px',format:[1200,Math.max(560,Math.round(img.naturalHeight||560))],orientation:'landscape'});
+          const dataUrl=await new Promise((resolve,reject)=>{const c=document.createElement('canvas');c.width=img.naturalWidth||1200;c.height=img.naturalHeight||560;const cx=c.getContext('2d');cx.drawImage(img,0,0);resolve(c.toDataURL('image/jpeg',.98));});
+          doc.addImage(dataUrl,'JPEG',0,0,1200,Math.max(560,Math.round(img.naturalHeight||560)));
+          folder.file(`PDF/${t.code}.pdf`,doc.output('blob'));
+        }
+        wrap.remove();URL.revokeObjectURL(url);
+      }catch{}
+    }
+    const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${ownerLabel}_Billets.zip`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  })().catch(e=>alert(e.message||'Création du ZIP impossible.'));
+}
 async function verifyTicketPublic(){const code=($('public-scan-input')?.value||'').trim().toUpperCase(),r=$('public-scan-result');if(!code){r.innerHTML='<div class="p-3 bg-amber-500/10 text-amber-400 rounded-xl text-xs font-bold">Saisissez un code.</div>';return;}try{const d=await api(`/api/tickets/verify/${encodeURIComponent(code)}`);r.innerHTML=`<div class="p-4 rounded-xl ${d.status==='VALID'?'bg-emerald-500/10 text-emerald-400':'bg-amber-500/10 text-amber-400'} text-xs font-bold">${esc(d.message)}<br><span class="font-normal">${esc(d.ticket?.event_title||'')}</span></div>`;}catch(e){r.innerHTML='<div class="p-4 bg-red-500/10 text-red-400 rounded-xl text-xs font-bold">BILLET NON VALIDE</div>';}}
 
 // Organisateur
@@ -212,8 +288,11 @@ function toggleFreeEventMode(){const free=$('event-type')?.value==='FREE';$('fre
 
 async function populateOrgReportEvents(){try{const d=await api('/api/organizers/events');const opts=(d.events||[]).map(e=>`<option value="${e.id}">${esc(e.title)}</option>`).join('');['org-participant-event','org-report-event'].forEach(id=>{const x=$(id);if(x)x.innerHTML=opts||'<option value="">Aucun événement</option>';});}catch(e){}}
 async function loadOrgParticipants(){const id=Number($('org-participant-event')?.value);if(!id)return;try{const d=await api(`/api/organizers/events/${id}/participants`);window.orgParticipantsCache=d.participants||[];renderOrgParticipants(window.orgParticipantsCache);}catch(e){alert(e.message)}}
-function renderOrgParticipants(rows){const list=$('org-participants-list');if(!list)return;list.innerHTML=rows.map(x=>`<tr class="border-b"><td class="p-4 font-bold">${esc(x.customer_name)}<div class="text-xs text-slate-400">${esc(x.customer_email)}</div></td><td class="p-4 font-mono text-xs">${esc(x.ticket_id)}</td><td class="p-4">${esc(x.ticket_type)}</td><td class="p-4 font-bold ${x.used?'text-slate-400':'text-emerald-600'}">${x.used?'VALIDÉ':'NON VALIDÉ'}</td><td class="p-4 text-xs text-slate-500">${x.used_at?new Date(x.used_at).toLocaleString('fr-FR'):'—'}</td></tr>`).join('')||'<tr><td colspan="5" class="p-6 text-center text-slate-400">Aucun participant.</td></tr>';}
-function filterOrgParticipants(){const q=($('org-participant-search')?.value||'').toLowerCase();renderOrgParticipants((window.orgParticipantsCache||[]).filter(x=>`${x.customer_name} ${x.customer_email} ${x.ticket_id}`.toLowerCase().includes(q)));}
+function renderOrgParticipants(rows){const list=$('org-participants-list');if(!list)return;list.innerHTML=rows.map(x=>`<tr class="border-b align-top"><td class="p-4 font-bold">${esc(x.customer_name)}<div class="text-xs text-slate-400">${esc(x.customer_email)}</div></td><td class="p-4 text-xs">${esc(x.customer_phone||'—')}</td><td class="p-4 font-mono text-[11px]">${esc(x.reference||'—')}</td><td class="p-4 font-mono text-xs font-bold">${esc(x.ticket_id)}</td><td class="p-4">${esc(x.ticket_type)}</td><td class="p-4 font-bold">${fmt(x.total_amount||0)} FCFA</td><td class="p-4 font-bold ${x.used?'text-slate-400':'text-emerald-600'}">${x.used?'VALIDÉ':'VALIDE'}</td><td class="p-4"><div class="flex flex-wrap gap-2"><button onclick="downloadTicketImage('${esc(x.ticket_id)}')" class="px-3 py-2 rounded-lg bg-[#F97316] text-white text-xs font-bold">JPEG</button><button onclick="downloadTicketPDF('${esc(x.ticket_id)}')" class="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold">PDF</button></div></td></tr>`).join('')||'<tr><td colspan="8" class="p-6 text-center text-slate-400">Aucun billet payé.</td></tr>';}
+function filterOrgParticipants(){const q=($('org-participant-search')?.value||'').toLowerCase();renderOrgParticipants((window.orgParticipantsCache||[]).filter(x=>`${x.customer_name} ${x.customer_email} ${x.customer_phone||''} ${x.ticket_id} ${x.reference||''}`.toLowerCase().includes(q)));}
+async function downloadCurrentOrgTicketsZip(){const rows=window.orgParticipantsCache||[];if(!rows.length)return alert('Aucun billet payé pour cet événement.');downloadTicketsZipClient(rows,'Ticketora_Evenement');}
+async function downloadAllOrgTicketsZip(){try{const d=await api('/api/organizers/tickets');const rows=d.tickets||[];if(!rows.length)return alert('Aucun billet payé.');downloadTicketsZipClient(rows,'Ticketora_Organisateur');}catch(e){alert(e.message)}}
+
 async function generateOrgReport(){const id=Number($('org-report-event')?.value);if(!id)return;try{const d=await api(`/api/organizers/events/${id}/report`),r=d.report||{};$('org-report-box').innerHTML=[['Billets vendus',r.tickets_sold||0],['Entrées validées',r.validated||0],['Participants absents',r.absent||0],['Taux de présence',(r.attendance_rate||0)+'%'],['Revenus bruts',fmt(r.revenue||0)+' FCFA'],['Revenu organisateur',fmt(r.organizer_revenue||0)+' FCFA'],['Commission Ticketora',fmt(r.commission||0)+' FCFA'],['Panier moyen',fmt(r.average_ticket||0)+' FCFA']].map(x=>`<div class="bg-white border rounded-2xl p-5 shadow-sm"><p class="text-xs text-slate-400 font-black uppercase">${x[0]}</p><p class="text-2xl font-black text-[#071a3b] mt-2">${x[1]}</p></div>`).join('');if($('org-report-extra'))$('org-report-extra').innerHTML=(r.by_category||[]).length?(r.by_category||[]).map(x=>`<div class="flex justify-between py-2 border-b last:border-0"><span class="font-semibold">${esc(x.ticket_type||'Standard')}</span><span>${Number(x.tickets||0)} billets · ${fmt(x.revenue||0)} FCFA</span></div>`).join(''):'Aucune vente par catégorie.';}catch(e){alert(e.message)}}
 async function downloadOrgReport(){
  const id=Number($('org-report-event')?.value);if(!id)return;
@@ -242,3 +321,4 @@ window.loadPublicAds=loadPublicAds;
 window.downloadTicketImage=downloadTicketImage;
 window.openWhatsAppTicket=openWhatsAppTicket;
 window.openWhatsAppTicketData=openWhatsAppTicketData;
+window.lookupMyTickets=lookupMyTickets;window.downloadTicketPDF=downloadTicketPDF;window.renderLookupTickets=renderLookupTickets;window.downloadTicketsZipClient=downloadTicketsZipClient;

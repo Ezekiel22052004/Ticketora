@@ -1,1 +1,1 @@
-Ticketora V8.1 - Tchin webhook hardening and payment return polling
+Ticketora V8.2 - Mes billets client + téléchargements organisateur/admin + Tchin
