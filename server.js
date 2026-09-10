@@ -425,9 +425,73 @@ async function fulfillOrder(orderId,sourceData={}){
     await c.query("UPDATE orders SET status='PAID',paid_at=NOW(),tchin_status='completed',tchin_reference=COALESCE($1,tchin_reference),tchin_mode=COALESCE($2,tchin_mode) WHERE id=$3",[sourceData.reference||null,sourceData.mode||null,o.id]);await c.query("UPDATE promo_usages SET status='USED',used_at=NOW() WHERE order_id=$1 AND status='RESERVED'",[o.id]);await logAction(c,'SYSTEM','TCHIN','TICKETS_ISSUED','order',o.id,{order_id:o.id,reference:o.reference,quantity});await c.query('COMMIT');return tickets;
   }catch(e){try{await c.query('ROLLBACK')}catch{};throw e}finally{c.release();}}
 
-function pickWebhook(req){const b=req.body||{};const d=b.data||{};const get=k=>d[k]??b[`data[${k}]`]??b[k];return {status:get('status'),reference:get('reference'),token:get('token'),amount:get('amount'),fee:get('fee'),net:get('net'),mode:get('mode'),timestamp:get('timestamp'),signature:get('signature'),customer:get('customer'),method:get('method')};}
-function validTchinSignature(p){const ts=String(p.timestamp||'');if(!/^\d+$/.test(ts))return false;const ms=Number(ts);const now=Date.now();const stamp=ms<1e12?ms*1000:ms;if(Math.abs(now-stamp)>5*60*1000)return false;const raw=[p.timestamp,p.reference,p.token,p.status,p.amount,p.net,p.mode].map(x=>String(x??'')).join('.');const expected=crypto.createHmac('sha256',process.env.TCHIN_PRIVATE_KEY||'').update(raw).digest('hex');const a=Buffer.from(expected,'utf8'),b=Buffer.from(String(p.signature||''),'utf8');return a.length===b.length&&crypto.timingSafeEqual(a,b);}
-async function handleTchinWebhook(req,res){const p=pickWebhook(req);if(!process.env.TCHIN_PRIVATE_KEY||!validTchinSignature(p))return res.status(401).send('invalid signature');try{const or=await pool.query('SELECT * FROM orders WHERE tchin_token=$1 OR reference=$2 LIMIT 1',[p.token,p.reference]);if(or.rows.length){const o=or.rows[0];await pool.query('UPDATE orders SET tchin_status=$1,tchin_reference=COALESCE($2,tchin_reference),tchin_mode=COALESCE($3,tchin_mode) WHERE id=$4',[p.status,p.reference,p.mode,o.id]);if(p.status==='completed'){try{await fulfillOrder(o.id,p);}catch(e){console.error('Tchin fulfillment:',e.message);}}else if(['failed','cancelled'].includes(String(p.status))){await pool.query("UPDATE orders SET status=CASE WHEN status='PAID' THEN status ELSE 'CANCELLED' END WHERE id=$1",[o.id]);await pool.query("UPDATE promo_usages SET status='CANCELLED' WHERE order_id=$1 AND status='RESERVED'",[o.id]);}return res.status(200).send('ok');}await ensureCagnotteTables();const cr=await pool.query('SELECT * FROM contributions WHERE tchin_token=$1 OR reference=$2 LIMIT 1',[p.token,p.reference]);if(!cr.rows.length)return res.status(200).send('ignored');const c=cr.rows[0];await pool.query('UPDATE contributions SET tchin_status=$1,tchin_reference=COALESCE($2,tchin_reference),tchin_mode=COALESCE($3,tchin_mode) WHERE id=$4',[p.status,p.reference,p.mode,c.id]);if(p.status==='completed'){if(String(process.env.TCHIN_ENV||'test')==='test')return res.status(200).send('ok');const received=Number(p.amount);const expected=Number(c.amount);const grossExpected=customerTotalFor(expected);if(received!==expected&&received!==grossExpected)return res.status(400).send('amount mismatch');const u=await pool.query("UPDATE contributions SET status='PAYE',paid_at=NOW() WHERE id=$1 AND status<>'PAYE' RETURNING cagnotte_id,amount",[c.id]);if(u.rows.length)await pool.query('UPDATE cagnottes SET total_amount=total_amount+$1,updated_at=NOW() WHERE id=$2',[u.rows[0].amount,u.rows[0].cagnotte_id]);}else if(['failed','cancelled'].includes(String(p.status))){await pool.query("UPDATE contributions SET status='ANNULE' WHERE id=$1 AND status<>'PAYE'",[c.id]);}return res.status(200).send('ok');}catch(e){console.error(e);return res.status(500).send('retry');}}
+function pickWebhook(req){
+  const b=req.body||{};
+  const d=b.data||{};
+  const get=k=>d[k]??b[`data[${k}]`]??b[k];
+  // Tchin sends timestamp/signature both in headers and in data. Prefer headers.
+  const headerTimestamp=req.get('Tchin-Timestamp')||req.get('tchin-timestamp');
+  const headerSignature=req.get('Tchin-Signature')||req.get('tchin-signature');
+  return {
+    status:get('status'), reference:get('reference'), token:get('token'),
+    amount:get('amount'), fee:get('fee'), net:get('net'), mode:get('mode'),
+    timestamp:headerTimestamp||get('timestamp'),
+    signature:headerSignature||get('signature'),
+    customer:get('customer'), method:get('method')
+  };
+}
+function validTchinSignature(p){
+  const ts=String(p.timestamp||'').trim();
+  if(!/^\d+$/.test(ts)||!p.reference||!p.token||!p.status||p.amount===undefined||p.net===undefined||!p.mode||!p.signature)return false;
+  const n=Number(ts);
+  const stamp=n<1e12?n*1000:n;
+  if(!Number.isFinite(stamp)||Math.abs(Date.now()-stamp)>5*60*1000)return false;
+  const raw=[p.timestamp,p.reference,p.token,p.status,p.amount,p.net,p.mode].map(x=>String(x??'')).join('.');
+  const expected=crypto.createHmac('sha256',process.env.TCHIN_PRIVATE_KEY||'').update(raw).digest('hex').toLowerCase();
+  const supplied=String(p.signature||'').trim().toLowerCase();
+  const a=Buffer.from(expected,'utf8'),b=Buffer.from(supplied,'utf8');
+  return a.length===b.length&&crypto.timingSafeEqual(a,b);
+}
+async function handleTchinWebhook(req,res){
+  const p=pickWebhook(req);
+  console.log('[TCHIN WEBHOOK] received',JSON.stringify({status:p.status,reference:p.reference,token:p.token,amount:p.amount,net:p.net,mode:p.mode,timestamp:p.timestamp,hasSignature:!!p.signature}));
+  if(!process.env.TCHIN_PRIVATE_KEY||!validTchinSignature(p)){
+    console.error('[TCHIN WEBHOOK] invalid signature or payload');
+    return res.status(401).send('invalid signature');
+  }
+  try{
+    const or=await pool.query('SELECT * FROM orders WHERE tchin_token=$1 OR reference=$2 LIMIT 1',[p.token,p.reference]);
+    if(or.rows.length){
+      const o=or.rows[0];
+      await pool.query('UPDATE orders SET tchin_status=$1,tchin_reference=COALESCE($2,tchin_reference),tchin_mode=COALESCE($3,tchin_mode) WHERE id=$4',[p.status,p.reference,p.mode,o.id]);
+      if(p.status==='completed'){
+        if(String(p.mode)!==String(process.env.TCHIN_ENV||'test')){
+          console.error('[TCHIN WEBHOOK] mode mismatch',p.mode,process.env.TCHIN_ENV);
+          return res.status(400).send('mode mismatch');
+        }
+        try{const tickets=await fulfillOrder(o.id,p);console.log('[TCHIN WEBHOOK] tickets issued',o.reference,tickets.length);}catch(e){console.error('[TCHIN WEBHOOK] fulfillment failed:',e.message);return res.status(500).send('retry');}
+      }else if(['failed','cancelled'].includes(String(p.status))){
+        await pool.query("UPDATE orders SET status=CASE WHEN status='PAID' THEN status ELSE 'CANCELLED' END WHERE id=$1",[o.id]);
+        await pool.query("UPDATE promo_usages SET status='CANCELLED' WHERE order_id=$1 AND status='RESERVED'",[o.id]);
+      }
+      return res.status(200).send('ok');
+    }
+    await ensureCagnotteTables();
+    const cr=await pool.query('SELECT * FROM contributions WHERE tchin_token=$1 OR reference=$2 LIMIT 1',[p.token,p.reference]);
+    if(!cr.rows.length)return res.status(200).send('ignored');
+    const c=cr.rows[0];
+    await pool.query('UPDATE contributions SET tchin_status=$1,tchin_reference=COALESCE($2,tchin_reference),tchin_mode=COALESCE($3,tchin_mode) WHERE id=$4',[p.status,p.reference,p.mode,c.id]);
+    if(p.status==='completed'){
+      if(String(process.env.TCHIN_ENV||'test')==='test')return res.status(200).send('ok');
+      const received=Number(p.amount),expected=Number(c.amount),grossExpected=customerTotalFor(expected);
+      if(received!==expected&&received!==grossExpected)return res.status(400).send('amount mismatch');
+      const u=await pool.query("UPDATE contributions SET status='PAYE',paid_at=NOW() WHERE id=$1 AND status<>'PAYE' RETURNING cagnotte_id,amount",[c.id]);
+      if(u.rows.length)await pool.query('UPDATE cagnottes SET total_amount=total_amount+$1,updated_at=NOW() WHERE id=$2',[u.rows[0].amount,u.rows[0].cagnotte_id]);
+    }else if(['failed','cancelled'].includes(String(p.status))){await pool.query("UPDATE contributions SET status='ANNULE' WHERE id=$1 AND status<>'PAYE'",[c.id]);}
+    return res.status(200).send('ok');
+  }catch(e){console.error('[TCHIN WEBHOOK] server error',e);return res.status(500).send('retry');}
+}
+app.get('/api/webhooks/tchin',(req,res)=>res.status(200).send('Ticketora Tchin webhook ready. POST only for webhook delivery.'));
 
 app.get('/api/payments/:token/status',asyncRoute(async(req,res)=>{const token=clean(req.params.token,255);const or=await pool.query('SELECT o.*,e.title event_title FROM orders o JOIN events e ON e.id=o.event_id WHERE o.tchin_token=$1',[token]);if(!or.rows.length)return res.status(404).json({success:false,message:'Transaction introuvable.'});let o=or.rows[0];let td=await tchinRequest(`/payments/${encodeURIComponent(token)}/status`,{method:'GET',headers:{'Content-Type':'application/json'}});const status=td.status||td.data?.status||'pending';if(status==='completed'&&o.status!=='PAID'){try{const tickets=await fulfillOrder(o.id,{amount:td.amount??o.total_amount,mode:td.mode||process.env.TCHIN_ENV,reference:td.reference||null});o=(await pool.query('SELECT * FROM orders WHERE id=$1',[o.id])).rows[0];return res.json({success:true,status:'completed',paid:true,quantity:Number(o.quantity||tickets.length),tickets:tickets.map(ticket=>({code:ticket.code,event_title:ticket.event_title,event_date:ticket.event_date,event_location:ticket.event_location,ticket_type:ticket.ticket_type,customer_name:ticket.customer_name,customer_email:ticket.customer_email,customer_phone:ticket.customer_phone})),ticket:tickets[0]||null});}catch(e){return res.json({success:true,status:'completed',paid:false,message:e.message});}}const tr=await pool.query('SELECT code,event_title,event_date,event_location,ticket_type,customer_name,customer_email,customer_phone FROM tickets WHERE order_id=$1 ORDER BY id',[o.id]);res.json({success:true,status:o.status==='PAID'?'completed':status,paid:o.status==='PAID',quantity:Number(o.quantity||tr.rows.length||1),tickets:tr.rows,ticket:tr.rows[0]||null});}));
 
