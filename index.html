@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <style>
         html{scroll-behavior:smooth}
         .pwa-install-btn{position:fixed;right:16px;bottom:18px;z-index:120;display:none;align-items:center;gap:9px;background:#06132f;color:#fff;border:1px solid rgba(249,115,22,.45);box-shadow:0 14px 35px rgba(0,0,0,.22);border-radius:999px;padding:12px 16px;font-weight:800;font-size:13px}
@@ -75,8 +77,8 @@
 
         <div class="hidden md:flex items-center gap-7">
             <button onclick="showSection('client-events');document.getElementById('events-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Événements</button>
-            <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Cagnottes</button><button onclick="document.getElementById('faq').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">FAQ</button>
-            <button onclick="openTicketLookup();document.getElementById('mes-billets')?.scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Mes billets</button><button onclick="openParticipantLogin()" class="nav-link text-sm font-bold">Connexion</button>
+            <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Cagnottes</button><button onclick="showMyTickets()" class="nav-link text-sm font-bold">Mes billets</button><button onclick="document.getElementById('faq').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">FAQ</button>
+            <button onclick="openParticipantLogin()" class="nav-link text-sm font-bold">Connexion</button>
             <a href="organisateur.html" class="nav-link text-sm font-bold">Organisateur</a>
             <a href="admin.html" class="nav-link text-sm font-bold">Administration</a>
             <button onclick="openParticipantRegister()" class="bg-[#F97316] hover:bg-orange-600 text-white text-sm px-5 py-3 rounded-xl font-bold shadow-lg shadow-orange-900/20 transition">Créer un compte</button>
@@ -89,8 +91,8 @@
 
     <div id="public-mobile-menu" class="hidden md:hidden fixed top-[80px] left-0 right-0 z-40 bg-[#06132f] border-t border-white/10 px-6 py-5 space-y-3 shadow-xl">
         <button onclick="showSection('client-events');document.getElementById('events-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Événements</button>
-        <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Cagnottes</button>
-        <button onclick="openTicketLookup();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">🎫 Mes billets</button><button onclick="openParticipantLogin();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Connexion / Mes tickets</button>
+        <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Cagnottes</button><button onclick="showMyTickets();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Mes billets</button>
+        <button onclick="openParticipantLogin();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Connexion / Mes tickets</button>
         <a href="organisateur.html" onclick="togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Espace organisateur</a>
         <a href="admin.html" onclick="togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Administration</a>
         <button onclick="openParticipantRegister();togglePublicMenu()" class="w-full bg-[#F97316] text-white font-bold py-3 rounded-xl">Créer un compte</button>
@@ -191,18 +193,20 @@
     </section>
     <div id="modal-cagnotte" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[75]"><div class="bg-white w-full max-w-md rounded-3xl p-7 relative"><button onclick="closeCagnotteModal()" class="absolute top-4 right-4 text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button><div class="w-12 h-12 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-hand-holding-heart"></i></div><h3 id="cag-modal-title" class="text-2xl font-black text-[#071a3b] mt-4"></h3><p id="cag-modal-desc" class="text-sm text-slate-500 mt-2"></p><div class="mt-5 space-y-3"><input id="cag-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Votre nom (facultatif)"><input id="cag-email" type="email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Email (facultatif)"><input id="cag-amount" type="number" min="100" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-bold" placeholder="Montant de votre contribution en FCFA"><button onclick="contributeCagnotte()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Contribuer avec Tchin</button><p class="text-[11px] text-slate-400">Le montant n’est pas fixé par la cagnotte : vous choisissez librement votre contribution (minimum 100 FCFA pour le paiement).</p></div></div></div>
 
-    <!-- VÉRIFICATION PUBLIQUE -->
+    <!-- MES BILLETS -->
     <section id="client-verify" class="hidden bg-[#071a3b] px-6 py-14">
-        <div class="max-w-md mx-auto">
-            <div class="bg-white rounded-3xl p-7 text-center shadow-2xl">
-                <div class="w-14 h-14 mx-auto rounded-2xl bg-orange-50 text-[#F97316] flex items-center justify-center text-xl"><i class="fa-solid fa-qrcode"></i></div>
-                <h2 class="text-2xl font-black text-[#071a3b] mt-4">Vérifier un billet</h2>
-                <p class="text-sm text-slate-500 mt-2">Entrez le code unique pour vérifier la validité du billet.</p>
-                <input type="text" id="public-scan-input" placeholder="Ex: TCK-98213" class="mt-5 w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-center uppercase font-mono font-bold text-slate-800">
-                <button onclick="verifyTicketPublic()" class="mt-3 w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition">Vérifier</button>
-                <div id="public-scan-result" class="mt-4"></div>
-            </div>
+      <div class="max-w-3xl mx-auto">
+        <div class="bg-white rounded-3xl p-6 md:p-8 shadow-2xl">
+          <div class="text-center"><div class="w-14 h-14 mx-auto rounded-2xl bg-orange-50 text-[#F97316] flex items-center justify-center text-xl"><i class="fa-solid fa-ticket"></i></div><h2 class="text-2xl font-black text-[#071a3b] mt-4">Mes billets</h2><p class="text-sm text-slate-500 mt-2">Entrez exactement les informations utilisées lors de l’achat.</p></div>
+          <form onsubmit="lookupMyTickets(event)" class="grid md:grid-cols-3 gap-3 mt-6">
+            <input id="my-ticket-name" required maxlength="255" placeholder="Nom complet" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800">
+            <input id="my-ticket-email" required type="email" maxlength="255" placeholder="Email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800">
+            <input id="my-ticket-phone" required type="tel" maxlength="60" placeholder="Numéro de téléphone" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800">
+            <button class="md:col-span-3 bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Vérifier mes informations</button>
+          </form>
+          <div id="my-tickets-result" class="mt-6"></div>
         </div>
+      </div>
     </section>
 
     <!-- MODAL ACHAT — FONCTIONNALITÉ INTACTE -->
@@ -249,31 +253,9 @@
  <div class="max-w-7xl mx-auto">
   <div class="text-center mb-7"><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Accès Ticketora</p><h2 class="text-2xl md:text-3xl font-black text-[#071a3b]">Choisissez votre espace</h2><p class="text-slate-500 mt-2 font-semibold">Les participants, organisateurs et administrateurs disposent d’un accès séparé et sécurisé.</p></div>
   <div class="grid md:grid-cols-3 gap-4">
-   <button onclick="openTicketLookup()" class="access-card text-left"><span class="access-icon"><i class="fa-solid fa-ticket"></i></span><span><b>Mes billets</b><small>Retrouvez un billet payé avec vos 3 informations</small></span><i class="fa-solid fa-arrow-right ml-auto"></i></button>
+   <button onclick="openParticipantLogin()" class="access-card text-left"><span class="access-icon"><i class="fa-solid fa-user"></i></span><span><b>Participant</b><small>Mes billets, commandes et historique</small></span><i class="fa-solid fa-arrow-right ml-auto"></i></button>
    <a href="organisateur.html" class="access-card"><span class="access-icon"><i class="fa-solid fa-user-tie"></i></span><span><b>Organisateur</b><small>Événements, ventes, rapports et retraits</small></span><i class="fa-solid fa-arrow-right ml-auto"></i></a>
    <a href="admin.html" class="access-card"><span class="access-icon"><i class="fa-solid fa-shield-halved"></i></span><span><b>Administration</b><small>Validation, supervision et gestion Ticketora</small></span><i class="fa-solid fa-arrow-right ml-auto"></i></a>
-  </div>
- </div>
-</section>
-
-
-<!-- MES BILLETS — RÉCUPÉRATION APRÈS PAIEMENT -->
-<section id="mes-billets" class="bg-slate-50 px-6 md:px-8 py-14">
- <div class="max-w-5xl mx-auto">
-  <div class="text-center mb-8">
-   <p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Après votre paiement</p>
-   <h2 class="text-3xl md:text-4xl font-black text-[#071a3b]">🎫 Mes billets</h2>
-   <p class="text-slate-500 mt-2">Vous avez payé mais le retour Tchin n’est pas revenu ? Retrouvez vos billets ici.</p>
-  </div>
-  <div class="bg-white border border-slate-200 rounded-3xl shadow-sm p-5 md:p-7">
-   <div class="grid md:grid-cols-3 gap-4">
-    <div><label class="block text-xs font-black uppercase text-slate-500 mb-2">Nom complet</label><input id="lookup-ticket-name" class="w-full border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-200" placeholder="Nom utilisé lors du paiement" autocomplete="name"></div>
-    <div><label class="block text-xs font-black uppercase text-slate-500 mb-2">Email</label><input id="lookup-ticket-email" type="email" class="w-full border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-200" placeholder="Email utilisé lors du paiement" autocomplete="email"></div>
-    <div><label class="block text-xs font-black uppercase text-slate-500 mb-2">Numéro de téléphone</label><input id="lookup-ticket-phone" type="tel" class="w-full border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-200" placeholder="Numéro utilisé lors du paiement" autocomplete="tel"></div>
-   </div>
-   <button onclick="lookupMyTickets()" class="mt-5 w-full md:w-auto bg-[#F97316] hover:bg-orange-600 text-white font-black px-7 py-3.5 rounded-xl"><i class="fa-solid fa-magnifying-glass mr-2"></i>Vérifier mes informations</button>
-   <p class="text-xs text-slate-400 mt-4">Pour votre sécurité, les trois informations doivent correspondre à la même commande payée. Si une seule est incorrecte, aucun billet ne sera affiché.</p>
-   <div id="lookup-ticket-result" class="mt-6"></div>
   </div>
  </div>
 </section>
@@ -364,7 +346,6 @@ function startHeroTypewriter(){
   const el=document.getElementById('hero-rotating-text');if(!el)return;
   el.textContent='';heroCharIndex=0;heroDeleting=false;heroWordIndex=0;runHeroTypewriter();
 }
-function openTicketLookup(){document.getElementById('mes-billets')?.scrollIntoView({behavior:'smooth'});setTimeout(()=>document.getElementById('lookup-ticket-name')?.focus(),250)}
 function openParticipantRegister(){const m=document.getElementById('participant-modal');document.getElementById('participant-modal-title').innerText='Créer un compte';document.getElementById('participant-name').classList.remove('hidden');m.classList.remove('hidden');m.classList.add('flex')}
 function openParticipantLogin(){const m=document.getElementById('participant-modal');document.getElementById('participant-modal-title').innerText='Connexion';document.getElementById('participant-name').classList.add('hidden');m.classList.remove('hidden');m.classList.add('flex')}
 window.addEventListener('DOMContentLoaded',startHeroTypewriter);

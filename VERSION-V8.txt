@@ -1,1 +1,1 @@
-Ticketora V8.2 - Mes billets client + téléchargements organisateur/admin + Tchin
+Ticketora V8.2 - Mes billets client + téléchargements PDF/JPEG admin/organisateur
