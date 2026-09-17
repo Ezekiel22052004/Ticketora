@@ -51,9 +51,15 @@ app.use(express.urlencoded({extended:true,limit:'200kb'}));
 app.use(session({
   store:new pgSession({pool,tableName:'user_sessions',createTableIfMissing:true}),
   secret:process.env.SESSION_SECRET||'CHANGE_ME_DEV_ONLY',
-  resave:false,saveUninitialized:false,
+  resave:false,
+  saveUninitialized:false,
   proxy:true,
-  cookie:{httpOnly:true,secure:isProd,sameSite:isProd?'none':'lax',maxAge:8*60*60*1000}
+  cookie:{
+    httpOnly:true,
+    secure:isProd,
+    sameSite:isProd?'lax':'lax',
+    maxAge:8*60*60*1000
+  }
 }));
 
 app.use((req,res,next)=>{
