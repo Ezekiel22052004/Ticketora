@@ -42,6 +42,7 @@ app.use(helmet({
 }));
 app.use(cors({origin:(origin,cb)=>{if(!origin||allowedOrigins.has(origin)) return cb(null,true); return cb(new Error('Origin non autorisée'));},credentials:true}));
 app.use(rateLimit({windowMs:60*1000,max:180,standardHeaders:true,legacyHeaders:false}));
+const authRateLimit=rateLimit({windowMs:15*60*1000,max:12,standardHeaders:true,legacyHeaders:false,message:{success:false,message:'Trop de tentatives. Réessayez plus tard.'}});
 
 // Webhook Tchin: x-www-form-urlencoded, avant express.json.
 app.post('/api/webhooks/tchin',express.urlencoded({extended:true,limit:'100kb'}),handleTchinWebhook);
@@ -51,15 +52,8 @@ app.use(express.urlencoded({extended:true,limit:'200kb'}));
 app.use(session({
   store:new pgSession({pool,tableName:'user_sessions',createTableIfMissing:true}),
   secret:process.env.SESSION_SECRET||'CHANGE_ME_DEV_ONLY',
-  resave:false,
-  saveUninitialized:false,
-  proxy:true,
-  cookie:{
-    httpOnly:true,
-    secure:isProd,
-    sameSite:isProd?'lax':'lax',
-    maxAge:8*60*60*1000
-  }
+  resave:false,saveUninitialized:false,
+  cookie:{httpOnly:true,secure:isProd,sameSite:isProd?'none':'lax',maxAge:8*60*60*1000}
 }));
 
 app.use((req,res,next)=>{
@@ -97,7 +91,7 @@ function formatTicketDate(value){
 async function buildTicketImage(ticket){
   const qrRaw=await QRCode.toBuffer(String(ticket.code),{width:160,margin:0,errorCorrectionLevel:'M',type:'png'});
   const qr=await sharp(qrRaw).resize(80,80,{fit:'fill'}).png().toBuffer();
-  const eventTitle=clean(ticket.event_title,255), location=clean(ticket.event_location,255), type=clean(ticket.ticket_type,120), participant=clean(ticket.customer_name,255), date=formatTicketDate(ticket.event_date), code=clean(ticket.code,32).toUpperCase();
+  const eventTitle=clean(ticket.event_title,255), location=clean(ticket.event_location,255), type=clean(ticket.ticket_type,120), participant=clean(ticket.customer_name,255), date=formatTicketDate(ticket.event_date), code=clean(ticket.code,32).toUpperCase(), ticketNumber=clean(ticket.ticket_number||ticket.code,40).toUpperCase();
   const fields=[
     {text:date,x:252,y:70,max:405,size:17},
     {text:location,x:252,y:151,max:405,size:17},
@@ -106,8 +100,8 @@ async function buildTicketImage(ticket){
     {text:eventTitle,x:252,y:394,max:605,size:17}
   ];
   const textSvg=fields.map(f=>`<text x="${f.x}" y="${f.y}" fill="#17233d" font-family="Arial,Helvetica,sans-serif" font-size="${ticketTextSize(f.text,f.max,f.size,10)}px" font-weight="700">${escXml(f.text)}</text>`).join('');
-  const idSize=ticketTextSize(code,135,13,9);
-  const overlay=Buffer.from(`<svg width="1241" height="429" viewBox="0 0 1241 429" xmlns="http://www.w3.org/2000/svg"><g>${textSvg}</g><text x="1082" y="349" text-anchor="middle" fill="#17233d" font-family="Arial,Helvetica,sans-serif" font-size="${idSize}px" font-weight="800">${escXml(code)}</text></svg>`);
+  const idSize=ticketTextSize(ticketNumber,135,13,9);
+  const overlay=Buffer.from(`<svg width="1241" height="429" viewBox="0 0 1241 429" xmlns="http://www.w3.org/2000/svg"><g>${textSvg}</g><text x="1082" y="349" text-anchor="middle" fill="#17233d" font-family="Arial,Helvetica,sans-serif" font-size="${idSize}px" font-weight="800">${escXml(ticketNumber)}</text></svg>`);
   return sharp(TICKET_TEMPLATE_PATH).resize(1241,429,{fit:'fill'}).composite([
     {input:qr,left:1041,top:218},
     {input:overlay,left:0,top:0}
@@ -202,6 +196,37 @@ async function ensureAdminPayoutTable(){
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_admin_payouts_status ON admin_payouts(status)`);
 }
 
+
+async function ensureTicketDownloadTable(){
+  if(!process.env.DATABASE_URL) return;
+  await pool.query(`CREATE TABLE IF NOT EXISTS ticket_downloads (
+    id BIGSERIAL PRIMARY KEY,
+    ticket_id BIGINT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    actor_type VARCHAR(30),
+    actor_id VARCHAR(100),
+    actor_email VARCHAR(255),
+    ip_address VARCHAR(100),
+    user_agent TEXT,
+    downloaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_ticket_downloads_ticket ON ticket_downloads(ticket_id,downloaded_at DESC)');
+}
+async function ensureAdminCredentials(){
+  if(!process.env.DATABASE_URL) return;
+  await pool.query(`CREATE TABLE IF NOT EXISTS admin_credentials (
+    id SMALLINT PRIMARY KEY DEFAULT 1 CHECK(id=1),
+    email VARCHAR(255) NOT NULL,
+    password_hash TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  const existing=await pool.query('SELECT id FROM admin_credentials WHERE id=1');
+  if(!existing.rows.length && process.env.ADMIN_PASSWORD){
+    const email=clean(process.env.ADMIN_EMAIL||'ticketora2026@gmail.com',255).toLowerCase();
+    const hash=await bcrypt.hash(String(process.env.ADMIN_PASSWORD),12);
+    await pool.query('INSERT INTO admin_credentials(id,email,password_hash) VALUES(1,$1,$2)',[email,hash]);
+  }
+}
+
 app.get('/api/health',(req,res)=>res.json({success:true,service:'ticketora',time:new Date().toISOString()}));
 
 
@@ -214,6 +239,17 @@ async function ensureV7MultiTicketTables(){
   await pool.query(`ALTER TABLE tickets DROP CONSTRAINT IF EXISTS tickets_order_id_key`);
   await pool.query(`DROP INDEX IF EXISTS tickets_order_id_key`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_order ON tickets(order_id)`);
+}
+
+async function ensureOrganizerGeneratedTicketColumns(){
+  if(!process.env.DATABASE_URL) return;
+  await pool.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS source VARCHAR(30) NOT NULL DEFAULT 'ONLINE'`);
+  await pool.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS generated_by_org_id BIGINT REFERENCES organizers(id) ON DELETE SET NULL`);
+  await pool.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_number VARCHAR(40)`);
+  await pool.query(`CREATE SEQUENCE IF NOT EXISTS ticketora_generated_ticket_number_seq START 1`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_ticket_number ON tickets(ticket_number) WHERE ticket_number IS NOT NULL`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_source_event ON tickets(event_id,source)`);
 }
 
 async function ensureV3Tables(){
@@ -257,7 +293,7 @@ app.post('/api/participants/register',asyncRoute(async(req,res)=>{
   try{const r=await pool.query('INSERT INTO participant_users(name,email,password_hash,phone) VALUES($1,$2,$3,$4) RETURNING id,name,email,phone',[name,email,hash,phone]);req.session.user={role:'PARTICIPANT',id:r.rows[0].id,email};res.status(201).json({success:true,user:r.rows[0]});}
   catch(e){if(e.code==='23505')return res.status(409).json({success:false,message:'Un compte existe déjà avec cet email.'});throw e;}
 }));
-app.post('/api/participants/login',asyncRoute(async(req,res)=>{
+app.post('/api/participants/login',authRateLimit,asyncRoute(async(req,res)=>{
  const email=clean(req.body.email,255).toLowerCase(),password=String(req.body.password||'');const r=await pool.query('SELECT id,name,email,phone,password_hash FROM participant_users WHERE email=$1',[email]);
  if(!r.rows.length||!(await bcrypt.compare(password,r.rows[0].password_hash)))return res.status(401).json({success:false,message:'Identifiants incorrects.'});
  req.session.user={role:'PARTICIPANT',id:r.rows[0].id,email:r.rows[0].email};const u=r.rows[0];delete u.password_hash;
@@ -288,7 +324,7 @@ app.post('/api/organizers/request',asyncRoute(async(req,res)=>{
   res.status(201).json({success:true,message:'Demande transmise. L’administrateur doit la valider avant la connexion.'});
 }));
 
-app.post('/api/organizers/login',asyncRoute(async(req,res)=>{
+app.post('/api/organizers/login',authRateLimit,asyncRoute(async(req,res)=>{
   const email=clean(req.body.email,255).toLowerCase(),password=String(req.body.password||'');
   const r=await pool.query('SELECT id,nom,prenom,email,phone,status,password_hash FROM organizers WHERE email=$1',[email]);
   if(!r.rows.length)return res.status(401).json({success:false,message:'Identifiants incorrects.'});
@@ -335,9 +371,25 @@ app.post('/api/organizers/events',requireOrg,asyncRoute(async(req,res)=>{
 app.put('/api/organizers/events/:id',requireOrg,asyncRoute(async(req,res)=>{const {title,category,date,location,venueName,city,address,latitude,longitude,description,price,capacity,ticketCategories,eventType}=req.body;const type=String(eventType||'PAID').toUpperCase()==='FREE'?'FREE':'PAID';const p=positiveInt(price),cap=positiveInt(capacity),cats=normalizeCats(ticketCategories);if(p===null||cap===null||(type==='PAID'&&!cats.length)||(type==='FREE'&&cap===0))return res.status(400).json({success:false,message:'Données invalides.'});const lat=latitude===null||latitude===undefined||latitude===''?null:Number(latitude),lon=longitude===null||longitude===undefined||longitude===''?null:Number(longitude);if((lat!==null&&(!Number.isFinite(lat)||lat<-90||lat>90))||(lon!==null&&(!Number.isFinite(lon)||lon<-180||lon>180)))return res.status(400).json({success:false,message:'Coordonnées GPS invalides.'});const r=await pool.query(`UPDATE events SET title=$1,category=$2,date=$3,location=$4,venue_name=$5,city=$6,address=$7,latitude=$8,longitude=$9,description=$10,price=$11,capacity=$12,ticket_categories=$13::jsonb,max_tickets_per_order=$14,image_url=$15,event_type=$16,updated_at=NOW(),status=CASE WHEN status='PUBLIE' THEN 'EN_ATTENTE' ELSE status END WHERE id=$17 AND org_id=$18 RETURNING *`,[clean(title),clean(category||'Concert',100),date,clean(location||venueName||city,255),clean(venueName,255),clean(city,120),clean(address,500),lat,lon,clean(description,3000),p,cap,JSON.stringify(cats),Math.max(1,Math.min(50,Number(req.body.maxTicketsPerOrder)||10)),clean(req.body.imageUrl,1800000)||null,type,req.params.id,req.session.user.id]);if(!r.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});res.json({success:true,event:r.rows[0]});}));
 
 // ---------- ADMIN ----------
-app.post('/api/admin/login',asyncRoute(async(req,res)=>{const email=clean(req.body.email,255).toLowerCase(),password=String(req.body.password||'');const expected=clean(process.env.ADMIN_EMAIL||'ticketora2026@gmail.com',255).toLowerCase();if(email!==expected||!process.env.ADMIN_PASSWORD||password!==process.env.ADMIN_PASSWORD)return res.status(401).json({success:false,message:'Identifiants administrateur incorrects.'});req.session.user={role:'ADMIN',email};req.session.save(err=>{if(err)return res.status(500).json({success:false,message:'Impossible d’enregistrer la session.'});res.json({success:true});});}));
+app.post('/api/admin/login',authRateLimit,asyncRoute(async(req,res)=>{await ensureAdminCredentials();const email=clean(req.body.email,255).toLowerCase(),password=String(req.body.password||'');const r=await pool.query('SELECT email,password_hash FROM admin_credentials WHERE id=1');if(!r.rows.length||email!==r.rows[0].email||!(await bcrypt.compare(password,r.rows[0].password_hash)))return res.status(401).json({success:false,message:'Identifiants administrateur incorrects.'});req.session.user={role:'ADMIN',email:r.rows[0].email};res.json({success:true});}));
 app.post('/api/admin/logout',(req,res)=>req.session.destroy(()=>res.json({success:true})));
 app.get('/api/admin/me',requireAdmin,(req,res)=>res.json({success:true,user:{email:req.session.user.email,role:'ADMIN'}}));
+
+app.post('/api/admin/password',requireAdmin,asyncRoute(async(req,res)=>{
+  await ensureAdminCredentials();
+  const oldP=String(req.body.oldPassword||''),newP=String(req.body.newPassword||''),confirm=String(req.body.confirmPassword||newP);
+  if(newP.length<8)return res.status(400).json({success:false,message:'Le nouveau mot de passe doit contenir au moins 8 caractères.'});
+  if(newP!==confirm)return res.status(400).json({success:false,message:'La confirmation du nouveau mot de passe ne correspond pas.'});
+  if(oldP===newP)return res.status(400).json({success:false,message:'Le nouveau mot de passe doit être différent de l’ancien.'});
+  const r=await pool.query('SELECT email,password_hash FROM admin_credentials WHERE id=1');
+  if(!r.rows.length||!(await bcrypt.compare(oldP,r.rows[0].password_hash)))return res.status(401).json({success:false,message:'Ancien mot de passe incorrect.'});
+  const hash=await bcrypt.hash(newP,12);
+  await pool.query('UPDATE admin_credentials SET password_hash=$1,updated_at=NOW() WHERE id=1',[hash]);
+  const adminEmail=r.rows[0].email;
+  await logAction(pool,'ADMIN',adminEmail,'ADMIN_PASSWORD_CHANGED','admin',1,{});
+  req.session.regenerate(err=>{if(err)return res.status(500).json({success:false,message:'Impossible de renouveler la session.'});req.session.user={role:'ADMIN',email:adminEmail};res.json({success:true,message:'Mot de passe administrateur modifié avec succès.'});});
+}));
+
 app.get('/api/admin/organizers',requireAdmin,asyncRoute(async(req,res)=>{
   const r=await pool.query(`SELECT o.id,o.nom,o.prenom,o.email,o.phone,o.status,o.created_at,
     COUNT(DISTINCT e.id)::int AS event_count, COUNT(DISTINCT t.id)::int AS tickets_sold,
@@ -903,22 +955,73 @@ app.get('/api/admin/cagnottes/:id/contributions',requireAdmin,asyncRoute(async(r
 app.post('/api/cagnottes/:id/contribute',asyncRoute(async(req,res)=>{await ensureCagnotteTables();const id=Number(req.params.id),name=clean(req.body.name,255),email=clean(req.body.email,255).toLowerCase(),amount=positiveInt(req.body.amount);if(!id||!amount||amount<100)return res.status(400).json({success:false,message:'Choisissez un montant d’au moins 100 FCFA.'});const c=await pool.connect();try{await c.query('BEGIN');const cg=await c.query("SELECT * FROM cagnottes WHERE id=$1 AND status='PUBLIE' FOR UPDATE",[id]);if(!cg.rows.length)throw new Error('Cagnotte indisponible.');const ref='CAG-'+crypto.randomBytes(5).toString('hex').toUpperCase();await c.query('INSERT INTO contributions(cagnotte_id,contributor_name,contributor_email,amount,reference,user_id) VALUES($1,$2,$3,$4,$5,$6)',[id,name||'Anonyme',email||null,amount,ref,req.session?.user?.role==='PARTICIPANT'?req.session.user.id:null]);await c.query('COMMIT');const returnUrl=process.env.TCHIN_RETURN_URL||`${FRONTEND_URL}/?cagnotte=return`;const cancelUrl=process.env.TCHIN_CANCEL_URL||`${FRONTEND_URL}/?cagnotte=cancel`;const callback=process.env.TCHIN_CALLBACK_URL||`${req.protocol}://${req.get('host')}/api/webhooks/tchin`;const td=await tchinRequest('/payments',{method:'POST',body:JSON.stringify({amount,description:`Ticketora Cagnotte ${ref} - ${cg.rows[0].title}`,env:process.env.TCHIN_ENV||'test',return_url:returnUrl,cancel_url:cancelUrl,callback_url:callback,fees_on_customer:true})});await pool.query('UPDATE contributions SET tchin_token=$1,tchin_status=\'pending\',tchin_mode=$2 WHERE reference=$3',[td.token,process.env.TCHIN_ENV||'test',ref]);res.json({success:true,reference:ref,token:td.token,payment_url:td.payment_url,amount});}catch(e){try{await c.query('ROLLBACK')}catch{};res.status(400).json({success:false,message:e.message});}finally{c.release();}}));
 app.get('/api/cagnottes/contributions/:token/status',asyncRoute(async(req,res)=>{await ensureCagnotteTables();const token=clean(req.params.token,255);const r=await pool.query('SELECT c.*,g.title FROM contributions c JOIN cagnottes g ON g.id=c.cagnotte_id WHERE c.tchin_token=$1',[token]);if(!r.rows.length)return res.status(404).json({success:false,message:'Contribution introuvable.'});const c=r.rows[0];const td=await tchinRequest(`/payments/${encodeURIComponent(token)}/status`,{method:'GET'});const status=td.status||td.data?.status||c.tchin_status||'pending';if(status==='completed'&&c.status!=='PAYE'&&String(process.env.TCHIN_ENV||'test')!=='test'){await pool.query("UPDATE contributions SET status='PAYE',paid_at=NOW(),tchin_status='completed',tchin_reference=COALESCE($1,tchin_reference),tchin_mode=COALESCE($2,tchin_mode) WHERE id=$3 AND status<>'PAYE'",[td.reference||null,td.mode||null,c.id]);await pool.query('UPDATE cagnottes SET total_amount=total_amount+$1,updated_at=NOW() WHERE id=$2',[c.amount,c.cagnotte_id]);const fresh=await pool.query('SELECT c.reference,c.amount,c.created_at,c.status,g.title FROM contributions c JOIN cagnottes g ON g.id=c.cagnotte_id WHERE c.id=$1',[c.id]);return res.json({success:true,status:'completed',paid:true,contribution:fresh.rows[0]||c});}res.json({success:true,status,paid:c.status==='PAYE'});}));
 
+// ---------- GÉNÉRATION DE BILLETS PAR ORGANISATEUR ----------
+async function requireTicketGeneratorAuth(req,res,next){
+  if(req.session?.user?.role!=='ORGANIZER') return res.status(401).json({success:false,message:'Connexion organisateur requise.'});
+  const until=Number(req.session.ticketGeneratorAuthUntil||0);
+  if(!until || until<Date.now()) return res.status(403).json({success:false,message:'Veuillez confirmer votre mot de passe pour générer un billet.'});
+  next();
+}
+app.post('/api/organizers/ticket-generator/auth',requireOrg,asyncRoute(async(req,res)=>{
+  const password=String(req.body.password||'');
+  const r=await pool.query('SELECT password_hash FROM organizers WHERE id=$1 AND status=\'VALIDE\'',[req.session.user.id]);
+  if(!r.rows.length || !(await bcrypt.compare(password,r.rows[0].password_hash))) return res.status(401).json({success:false,message:'Identifiant ou mot de passe incorrect. Veuillez réessayer.'});
+  req.session.ticketGeneratorAuthUntil=Date.now()+15*60*1000;
+  res.json({success:true,expires_at:new Date(req.session.ticketGeneratorAuthUntil).toISOString()});
+}));
+app.get('/api/organizers/ticket-generator/status',requireOrg,asyncRoute(async(req,res)=>{
+  const until=Number(req.session.ticketGeneratorAuthUntil||0);
+  res.json({success:true,authenticated:until>Date.now(),expires_at:until?new Date(until).toISOString():null});
+}));
+app.post('/api/organizers/tickets/generate',requireTicketGeneratorAuth,asyncRoute(async(req,res)=>{
+  await ensureOrganizerGeneratedTicketColumns();
+  const eventId=Number(req.body.eventId),ticketType=clean(req.body.ticketType,120),name=clean(req.body.name,255),email=clean(req.body.email,255).toLowerCase(),phone=clean(req.body.phone,60);
+  if(!eventId||!ticketType||!name||!email) return res.status(400).json({success:false,message:'Événement, type de billet, nom et email sont obligatoires.'});
+  const c=await pool.connect();
+  try{
+    await c.query('BEGIN');
+    const ev=await c.query('SELECT * FROM events WHERE id=$1 AND org_id=$2 FOR UPDATE',[eventId,req.session.user.id]);
+    if(!ev.rows.length){await c.query('ROLLBACK');return res.status(403).json({success:false,message:'Événement introuvable ou non autorisé.'});}
+    const event=ev.rows[0],cats=Array.isArray(event.ticket_categories)?event.ticket_categories:[];
+    const cat=cats.find(x=>String(x.name||'').trim().toLowerCase()===ticketType.toLowerCase());
+    if(!cat && String(event.event_type||'PAID')!=='FREE'){await c.query('ROLLBACK');return res.status(400).json({success:false,message:'Ce type de billet n’est pas configuré pour cet événement.'});}
+    const onlineCount=await c.query("SELECT COUNT(*)::int n FROM tickets WHERE event_id=$1 AND source='ONLINE' AND issued_by_admin=false",[eventId]);
+    const generatedCount=await c.query("SELECT COUNT(*)::int n FROM tickets WHERE event_id=$1 AND source='ORGANIZER_GENERATED'",[eventId]);
+    if(Number(event.capacity)>0 && Number(onlineCount.rows[0].n)+Number(generatedCount.rows[0].n)>=Number(event.capacity)) {await c.query('ROLLBACK');return res.status(409).json({success:false,message:'La capacité maximale de cet événement est atteinte.'});}
+    const orderRef='ORG-'+crypto.randomBytes(5).toString('hex').toUpperCase();
+    const order=await c.query(`INSERT INTO orders(reference,event_id,ticket_type,customer_name,customer_email,customer_phone,quantity,base_amount,discount_amount,total_amount,status,paid_at) VALUES($1,$2,$3,$4,$5,$6,1,0,0,0,'PAID',NOW()) RETURNING id`,[orderRef,eventId,ticketType,name,email,phone]);
+    const seq=await c.query("SELECT nextval('ticketora_generated_ticket_number_seq')::bigint n");
+    const ticketNumber='ORG-'+String(seq.rows[0].n).padStart(6,'0');
+    let code=null;
+    for(let i=0;i<20;i++){const q=fmtTicket();if(!(await c.query('SELECT 1 FROM tickets WHERE code=$1',[q])).rows.length){code=q;break;}}
+    if(!code) throw new Error('Impossible de générer un QR unique.');
+    const t=await c.query(`INSERT INTO tickets(order_id,code,event_id,org_id,event_title,event_date,event_location,ticket_type,customer_name,customer_email,customer_phone,total_amount,admin_commission,organizer_amount,commission_rate,issued_by_admin,source,generated_by_org_id,generated_at,ticket_number) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,0,0,0,0,false,'ORGANIZER_GENERATED',$4,NOW(),$12) RETURNING *`,[order.rows[0].id,code,eventId,event.org_id,event.title,event.date,event.location,ticketType,name,email,phone,ticketNumber]);
+    await logAction(c,'ORGANIZER',req.session.user.id,'GENERATE_TICKET','TICKET',t.rows[0].id,{event_id:eventId,participant:name,ticket_type:ticketType,ticket_number:ticketNumber,source:'ORGANIZER_GENERATED'});
+    await c.query('COMMIT');
+    res.status(201).json({success:true,message:'Billet généré avec succès.',ticket:t.rows[0]});
+  }catch(e){try{await c.query('ROLLBACK')}catch{};throw e}finally{c.release();}
+}));
+
 // ---------- PARTICIPANTS / EXPORTS / RAPPORTS V3 ----------
 app.get('/api/organizers/events/:id/participants',requireOrg,asyncRoute(async(req,res)=>{
- const id=Number(req.params.id);const r=await pool.query(`SELECT t.id,t.code AS ticket_id,t.customer_name,t.customer_email,t.customer_phone,t.ticket_type,t.total_amount,t.used,t.used_at,t.created_at,t.event_title,t.event_date,t.event_location,o.reference FROM tickets t JOIN orders o ON o.id=t.order_id WHERE t.event_id=$1 AND t.org_id=$2 AND t.issued_by_admin=false AND o.status='PAID' ORDER BY t.id DESC`,[id,req.session.user.id]);res.json({success:true,participants:r.rows});
+ const id=Number(req.params.id);const r=await pool.query(`SELECT t.id,t.code AS ticket_id,t.ticket_number,t.source,t.generated_at,t.customer_name,t.customer_email,t.customer_phone,t.ticket_type,t.total_amount,t.used,t.used_at,t.created_at,t.event_title,t.event_date,t.event_location,o.reference FROM tickets t JOIN orders o ON o.id=t.order_id WHERE t.event_id=$1 AND t.org_id=$2 AND t.issued_by_admin=false AND o.status='PAID' ORDER BY t.id DESC`,[id,req.session.user.id]);res.json({success:true,participants:r.rows});
 }));
 app.get('/api/organizers/events/:id/report',requireOrg,asyncRoute(async(req,res)=>{
  const id=Number(req.params.id);const ev=await pool.query('SELECT * FROM events WHERE id=$1 AND org_id=$2',[id,req.session.user.id]);if(!ev.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});
- const [r,cats]=await Promise.all([
-  pool.query(`SELECT COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int revenue,COALESCE(SUM(organizer_amount),0)::int organizer_revenue,COALESCE(SUM(admin_commission),0)::int commission,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1 AND issued_by_admin=false`,[id]),
-  pool.query(`SELECT ticket_type,COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int revenue,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1 AND issued_by_admin=false GROUP BY ticket_type ORDER BY tickets DESC`,[id])
- ]);const x=r.rows[0];const tickets=Number(x.tickets),validated=Number(x.validated),revenue=Number(x.revenue);res.json({success:true,event:ev.rows[0],report:{tickets_sold:tickets,validated,absent:Math.max(0,tickets-validated),attendance_rate:tickets?Math.round(validated/tickets*100):0,revenue,organizer_revenue:Number(x.organizer_revenue),commission:Number(x.commission),average_ticket:tickets?Math.round(revenue/tickets):0,by_category:cats.rows.map(v=>({...v,tickets:Number(v.tickets),revenue:Number(v.revenue),validated:Number(v.validated) }))}});
+ const [online,generated,byType,generatedRows]=await Promise.all([
+  pool.query(`SELECT COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int revenue,COALESCE(SUM(organizer_amount),0)::int organizer_revenue,COALESCE(SUM(admin_commission),0)::int commission,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1 AND issued_by_admin=false AND source='ONLINE'`,[id]),
+  pool.query(`SELECT COUNT(*)::int tickets,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1 AND source='ORGANIZER_GENERATED'`,[id]),
+  pool.query(`SELECT ticket_type,COUNT(*) FILTER(WHERE source='ONLINE')::int online_tickets,COUNT(*) FILTER(WHERE source='ORGANIZER_GENERATED')::int generated_tickets,COUNT(*)::int total_tickets,COUNT(*) FILTER(WHERE used)::int validated FROM tickets WHERE event_id=$1 AND issued_by_admin=false GROUP BY ticket_type ORDER BY total_tickets DESC`,[id]),
+  pool.query(`SELECT t.id,t.ticket_number,t.code,t.customer_name,t.customer_email,t.customer_phone,t.ticket_type,t.generated_at,t.used,t.used_at,o.nom AS generated_by FROM tickets t LEFT JOIN organizers o ON o.id=t.generated_by_org_id WHERE t.event_id=$1 AND t.source='ORGANIZER_GENERATED' ORDER BY t.id DESC`,[id])
+ ]);
+ const x=online.rows[0],g=generated.rows[0];const sold=Number(x.tickets),gen=Number(g.tickets),validated=Number(x.validated)+Number(g.validated),total=sold+gen,revenue=Number(x.revenue);
+ res.json({success:true,event:ev.rows[0],report:{tickets_sold:sold,organizer_generated:gen,total_tickets:total,validated,absent:Math.max(0,total-validated),attendance_rate:total?Math.round(validated/total*100):0,revenue,organizer_revenue:Number(x.organizer_revenue),commission:Number(x.commission),average_ticket:sold?Math.round(revenue/sold):0,by_category:byType.rows.map(v=>({...v,online_tickets:Number(v.online_tickets),generated_tickets:Number(v.generated_tickets),total_tickets:Number(v.total_tickets),validated:Number(v.validated)})),generated_tickets:generatedRows.rows}});
 }));
 function csvCell(v){const s=String(v??'');return '"'+s.replace(/"/g,'""')+'"';}
 async function exportTickets(req,res,scope){
- const id=req.params.id?Number(req.params.id):null;let q=`SELECT t.code AS ticket_id,t.customer_name AS participant,t.customer_email,t.ticket_type,t.total_amount,t.used AS validated,t.used_at,t.created_at,e.title AS event,e.date FROM tickets t JOIN events e ON e.id=t.event_id WHERE t.issued_by_admin=false`;const args=[];
+ const id=req.params.id?Number(req.params.id):null;let q=`SELECT t.code AS ticket_id,COALESCE(t.ticket_number,t.code) AS ticket_number,t.customer_name AS participant,t.customer_email,t.customer_phone,t.ticket_type,t.total_amount,t.source,t.generated_at,t.used AS validated,t.used_at,t.created_at,e.title AS event,e.date FROM tickets t JOIN events e ON e.id=t.event_id WHERE t.issued_by_admin=false`;const args=[];
  if(scope==='org'){q+=' AND t.org_id=$1';args.push(req.session.user.id);if(id){q+=' AND t.event_id=$2';args.push(id);}} else if(id){q+=' AND t.event_id=$1';args.push(id);}q+=' ORDER BY t.id DESC';
- const r=await pool.query(q,args);const headers=['ticket_id','participant','customer_email','ticket_type','total_amount','validated','used_at','created_at','event','date'];res.type('text/csv; charset=utf-8').set('Content-Disposition','attachment; filename="ticketora-tickets.csv"').send('\ufeff'+headers.join(';')+'\n'+r.rows.map(x=>headers.map(h=>csvCell(x[h])).join(';')).join('\n'));
+ const r=await pool.query(q,args);const headers=['ticket_id','ticket_number','participant','customer_email','customer_phone','ticket_type','total_amount','source','generated_at','validated','used_at','created_at','event','date'];res.type('text/csv; charset=utf-8').set('Content-Disposition','attachment; filename="ticketora-tickets.csv"').send('\ufeff'+headers.join(';')+'\n'+r.rows.map(x=>headers.map(h=>csvCell(x[h])).join(';')).join('\n'));
 }
 app.get('/api/organizers/export/tickets',requireOrg,asyncRoute(async(req,res)=>exportTickets(req,res,'org')));
 app.get('/api/organizers/events/:id/export',requireOrg,asyncRoute(async(req,res)=>exportTickets(req,res,'org')));
@@ -990,15 +1093,19 @@ app.post('/api/tickets/lookup',asyncRoute(async(req,res)=>{
 }));
 
 app.get('/api/organizers/tickets',requireOrg,asyncRoute(async(req,res)=>{
- const r=await pool.query(`SELECT t.id,t.code,t.customer_name,t.customer_email,t.customer_phone,t.ticket_type,t.total_amount,t.used,t.used_at,t.created_at,t.event_title,t.event_date,t.event_location,o.reference,e.title AS event_name FROM tickets t JOIN orders o ON o.id=t.order_id JOIN events e ON e.id=t.event_id WHERE t.org_id=$1 AND t.issued_by_admin=false AND o.status='PAID' ORDER BY t.id DESC`,[req.session.user.id]);
+ const r=await pool.query(`SELECT t.id,t.code,t.ticket_number,t.source,t.generated_at,t.customer_name,t.customer_email,t.customer_phone,t.ticket_type,t.total_amount,t.used,t.used_at,t.created_at,t.event_title,t.event_date,t.event_location,o.reference,e.title AS event_name FROM tickets t JOIN orders o ON o.id=t.order_id JOIN events e ON e.id=t.event_id WHERE t.org_id=$1 AND t.issued_by_admin=false AND o.status='PAID' ORDER BY t.id DESC`,[req.session.user.id]);
  res.json({success:true,tickets:r.rows});
 }));
 
 app.get('/api/organizers/events/:id/tickets',requireOrg,asyncRoute(async(req,res)=>{
  const id=Number(req.params.id);if(!Number.isInteger(id))return res.status(400).json({success:false,message:'Événement invalide.'});
  const ev=await pool.query('SELECT id,title FROM events WHERE id=$1 AND org_id=$2',[id,req.session.user.id]);if(!ev.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});
- const r=await pool.query(`SELECT t.id,t.code,t.customer_name,t.customer_email,t.customer_phone,t.ticket_type,t.total_amount,t.used,t.used_at,t.created_at,t.event_title,t.event_date,t.event_location,o.reference
-   FROM tickets t JOIN orders o ON o.id=t.order_id WHERE t.event_id=$1 AND t.org_id=$2 AND t.issued_by_admin=false AND o.status='PAID' ORDER BY t.id DESC`,[id,req.session.user.id]);
+ const r=await pool.query(`SELECT t.id,t.code,t.ticket_number,t.source,t.generated_at,t.customer_name,t.customer_email,t.customer_phone,t.ticket_type,t.total_amount,t.used,t.used_at,t.created_at,t.event_title,t.event_date,t.event_location,o.reference,
+   COALESCE(d.download_count,0)::int AS download_count,d.last_downloaded_at,d.last_downloaded_by,
+   CASE WHEN COALESCE(d.download_count,0)>0 THEN true ELSE false END AS downloaded
+   FROM tickets t JOIN orders o ON o.id=t.order_id
+   LEFT JOIN LATERAL (SELECT COUNT(*)::int AS download_count,MAX(downloaded_at) AS last_downloaded_at,(ARRAY_AGG(actor_email ORDER BY downloaded_at DESC))[1] AS last_downloaded_by FROM ticket_downloads td WHERE td.ticket_id=t.id AND td.actor_type='PARTICIPANT') d ON true
+   WHERE t.event_id=$1 AND t.org_id=$2 AND t.issued_by_admin=false AND t.source='ONLINE' AND o.status='PAID' ORDER BY t.id DESC`,[id,req.session.user.id]);
  res.json({success:true,event:ev.rows[0],tickets:r.rows});
 }));
 app.get('/api/admin/tickets',requireAdmin,asyncRoute(async(req,res)=>{
@@ -1014,10 +1121,22 @@ app.get('/api/cagnottes/contributions/verify/:reference',asyncRoute(async(req,re
 app.get('/api/tickets/:code/qr',asyncRoute(async(req,res)=>{const code=clean(req.params.code,32).toUpperCase();const r=await pool.query('SELECT 1 FROM tickets WHERE code=$1',[code]);if(!r.rows.length)return res.status(404).end();const png=await QRCode.toBuffer(code,{width:500,margin:1,errorCorrectionLevel:'M'});res.type('png').send(png);}));
 
 app.get('/api/tickets/:code/image',asyncRoute(async(req,res)=>{
+  await ensureTicketDownloadTable();
   const code=clean(req.params.code,32).toUpperCase();
-  const r=await pool.query('SELECT code,event_title,event_date,event_location,ticket_type,customer_name FROM tickets WHERE code=$1',[code]);
+  const r=await pool.query('SELECT t.*,e.org_id AS event_org_id FROM tickets t JOIN events e ON e.id=t.event_id WHERE t.code=$1',[code]);
   if(!r.rows.length)return res.status(404).end();
-  const png=await buildTicketImage(r.rows[0]);
+  const ticket=r.rows[0], role=req.session?.user?.role||null, uid=req.session?.user?.id||null;
+  if(req.query.download==='1'){
+    if(role==='ORGANIZER' && String(ticket.org_id)!==String(uid)) return res.status(403).json({success:false,message:'Billet non autorisé pour cet organisateur.'});
+    if(role==='PARTICIPANT'){
+      const own=await pool.query(`SELECT 1 FROM orders o WHERE o.id=$1 AND (o.user_id=$2 OR LOWER(o.customer_email)=(SELECT LOWER(email) FROM participant_users WHERE id=$2)) LIMIT 1`,[ticket.order_id,uid]);
+      if(!own.rows.length)return res.status(403).json({success:false,message:'Ce billet ne vous appartient pas.'});
+    }
+    await pool.query('INSERT INTO ticket_downloads(ticket_id,actor_type,actor_id,actor_email,ip_address,user_agent) VALUES($1,$2,$3,$4,$5,$6)',[
+      ticket.id,role,uid?String(uid):null,req.session?.user?.email||null,clean(req.ip,100),clean(req.get('user-agent'),1000)
+    ]);
+  }
+  const png=await buildTicketImage(ticket);
   res.set('Cache-Control','no-store, max-age=0');res.type('png').send(png);
 }));
 
@@ -1026,4 +1145,4 @@ app.get('/api/tickets/:code/image',asyncRoute(async(req,res)=>{
 app.use(express.static(__dirname));
 app.use((err,req,res,next)=>{console.error(err);if(res.headersSent)return next(err);if(err?.type==='entity.too.large')return res.status(413).json({success:false,message:'Fichier ou requête trop volumineux.'});res.status(500).json({success:false,message:'Erreur interne du serveur.'});});
 
-app.listen(PORT,async()=>{try{await ensureEventImageColumn();await ensureAdminPayoutTable();await ensurePayoutTchinColumns();await ensureChatTable();await ensureScannerTable();await ensureCagnotteTables();await ensurePromoTables();await ensureV3Tables();await ensureV7MultiTicketTables();console.log(`Ticketora API sur http://localhost:${PORT}`);setInterval(syncPendingTchinPayouts,120000);}catch(e){console.error('Initialisation base admin retraits:',e.message);console.log(`Ticketora API sur http://localhost:${PORT}`);}});
+app.listen(PORT,async()=>{try{await ensureEventImageColumn();await ensureAdminPayoutTable();await ensurePayoutTchinColumns();await ensureChatTable();await ensureScannerTable();await ensureCagnotteTables();await ensurePromoTables();await ensureV3Tables();await ensureV7MultiTicketTables();await ensureOrganizerGeneratedTicketColumns();await ensureTicketDownloadTable();await ensureAdminCredentials();console.log(`Ticketora API sur http://localhost:${PORT}`);setInterval(syncPendingTchinPayouts,120000);}catch(e){console.error('Initialisation base admin retraits:',e.message);console.log(`Ticketora API sur http://localhost:${PORT}`);}});

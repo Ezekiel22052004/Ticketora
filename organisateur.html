@@ -94,7 +94,7 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
                 </div>
                 <nav class="space-y-2">
                     <button onclick="switchOrgSection('stats')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800 text-white"><i class="fa-solid fa-chart-line w-5"></i> Ventes</button>
-                    <button onclick="switchOrgSection('events')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-calendar-days w-5"></i> Événements</button><button onclick="switchOrgSection('tickets')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-ticket w-5"></i> Billets</button><button onclick="switchOrgSection('participants')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-users w-5"></i> Participants</button><button onclick="switchOrgSection('reports')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-file-chart-column w-5"></i> Rapports</button>
+                    <button onclick="switchOrgSection('events')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-calendar-days w-5"></i> Événements</button><button onclick="switchOrgSection('generate-ticket')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-ticket w-5"></i> 🎟️ Générer un billet</button><button onclick="switchOrgSection('tickets')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-ticket w-5"></i> Billets</button><button onclick="switchOrgSection('participants')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-users w-5"></i> Participants</button><button onclick="switchOrgSection('reports')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-file-chart-column w-5"></i> Rapports</button>
                     <button onclick="switchOrgSection('promos')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-ticket-simple w-5"></i> Codes Promo</button>
                     <button onclick="switchOrgSection('payouts')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-solid fa-wallet w-5"></i> Demandes de Retrait</button>
                     <button onclick="switchOrgSection('chat')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-slate-800"><i class="fa-regular fa-comments w-5"></i> Chat avec Admin</button>
@@ -128,6 +128,23 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
                     <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><p class="text-xs font-bold text-slate-400 uppercase">Conseil</p><p class="text-sm text-slate-600 mt-3">Ajoutez une belle affiche et des catégories de billets claires pour améliorer la présentation de vos événements.</p></div>
                 </div>
             </section>
+
+            
+<section id="org-sec-generate-ticket" class="hidden space-y-6 max-w-5xl">
+  <div><h1 class="text-2xl font-black text-slate-900">🎟️ Générer un billet</h1><p class="text-sm text-slate-500">Créez un vrai billet Ticketora pour un participant. Le QR sera compatible avec le scanner d’entrée.</p></div>
+  <div id="org-generator-auth" class="bg-white rounded-2xl border border-slate-200 p-6 max-w-xl">
+    <div class="flex items-center gap-3 mb-5"><div class="w-11 h-11 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-shield-halved"></i></div><div><h2 class="font-black text-slate-900">Confirmation de sécurité</h2><p class="text-xs text-slate-500">Confirmez votre mot de passe pour accéder à la génération.</p></div></div>
+    <form onsubmit="authenticateTicketGenerator(event)" class="space-y-4"><input type="text" id="generator-login" readonly class="w-full bg-slate-100 border rounded-xl p-3 text-sm text-slate-700" value="Votre identifiant organisateur"><input type="password" id="generator-password" required class="w-full bg-slate-50 border rounded-xl p-3 text-sm" placeholder="Mot de passe"><div id="generator-auth-message" class="hidden text-xs p-3 rounded-xl font-semibold"></div><button class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Continuer</button></form>
+  </div>
+  <div id="org-generator-form-box" class="hidden bg-white rounded-2xl border border-slate-200 p-6">
+    <form onsubmit="generateOrganizerTicket(event)" class="space-y-5">
+      <div class="grid md:grid-cols-2 gap-4"><div><label class="block text-xs font-bold text-slate-700 uppercase mb-1">Événement</label><select id="generator-event" onchange="populateGeneratorTicketTypes()" required class="w-full bg-slate-50 border rounded-xl p-3 text-sm"></select></div><div><label class="block text-xs font-bold text-slate-700 uppercase mb-1">Type de billet</label><select id="generator-ticket-type" required class="w-full bg-slate-50 border rounded-xl p-3 text-sm"></select></div></div>
+      <div class="border-t pt-5"><h3 class="font-black text-slate-900 mb-4">Informations du participant</h3><div class="grid md:grid-cols-2 gap-4"><input id="generator-name" required class="bg-slate-50 border rounded-xl p-3 text-sm" placeholder="Nom complet"><input id="generator-phone" class="bg-slate-50 border rounded-xl p-3 text-sm" placeholder="WhatsApp / Téléphone"><input id="generator-email" type="email" required class="bg-slate-50 border rounded-xl p-3 text-sm" placeholder="Email"></div></div>
+      <div id="generator-message" class="hidden text-sm p-3 rounded-xl font-semibold"></div><button class="bg-[#F97316] text-white font-bold px-6 py-3 rounded-xl">🎟️ Générer et télécharger le billet</button>
+    </form>
+  </div>
+  <div id="generator-last-ticket" class="hidden bg-white rounded-2xl border border-slate-200 p-6"></div>
+</section>
 
             <!-- ÉVÉNEMENTS & CATÉGORIES MULTIPLES -->
             <section id="org-sec-events" class="hidden space-y-6">

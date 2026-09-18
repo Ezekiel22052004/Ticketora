@@ -283,3 +283,42 @@ CREATE TABLE IF NOT EXISTS site_ads (
  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_site_ads_active_dates ON site_ads(active,start_at,end_at);
+
+
+-- Billets générés par l'organisateur
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS source VARCHAR(30) NOT NULL DEFAULT 'ONLINE';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS generated_by_org_id BIGINT REFERENCES organizers(id) ON DELETE SET NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_number VARCHAR(40);
+CREATE SEQUENCE IF NOT EXISTS ticketora_generated_ticket_number_seq START 1;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_ticket_number ON tickets(ticket_number) WHERE ticket_number IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tickets_source_event ON tickets(event_id,source);
+
+
+-- V8.2 : billets générés par l'organisateur et suivi des téléchargements
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS source VARCHAR(30) NOT NULL DEFAULT 'ONLINE';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS generated_by_org_id BIGINT REFERENCES organizers(id) ON DELETE SET NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_number VARCHAR(40);
+CREATE SEQUENCE IF NOT EXISTS ticketora_generated_ticket_number_seq START 1;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_ticket_number ON tickets(ticket_number) WHERE ticket_number IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tickets_source_event ON tickets(event_id,source);
+
+CREATE TABLE IF NOT EXISTS ticket_downloads (
+  id BIGSERIAL PRIMARY KEY,
+  ticket_id BIGINT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  actor_type VARCHAR(30),
+  actor_id VARCHAR(100),
+  actor_email VARCHAR(255),
+  ip_address VARCHAR(100),
+  user_agent TEXT,
+  downloaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_ticket_downloads_ticket ON ticket_downloads(ticket_id,downloaded_at DESC);
+
+CREATE TABLE IF NOT EXISTS admin_credentials (
+  id SMALLINT PRIMARY KEY DEFAULT 1 CHECK(id=1),
+  email VARCHAR(255) NOT NULL,
+  password_hash TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

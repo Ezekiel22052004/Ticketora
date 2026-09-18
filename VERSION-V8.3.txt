@@ -1,0 +1,12 @@
+Ticketora V8.3 - sécurité, suivi des téléchargements et mot de passe Admin
+
+Ajouts :
+- Suivi sécurisé des téléchargements de billets.
+- Liste organisateur des billets achetés en ligne avec statut de téléchargement, nombre et dernier téléchargement.
+- Téléchargement JPEG/PDF via endpoint tracé.
+- Contrôle d'appartenance participant/organisateur lors d'un téléchargement.
+- Table ticket_downloads.
+- Authentification Admin persistante en base avec migration depuis ADMIN_PASSWORD au premier démarrage.
+- Modification du mot de passe Admin depuis Paramètres.
+- Rate-limit renforcé sur les connexions participant/organisateur/admin.
+- Schéma db.sql mis à jour.
