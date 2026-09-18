@@ -153,7 +153,7 @@
 
             <div class="mt-12">
                 <div class="flex items-end justify-between gap-4 mb-5">
-                    <div><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Popularité</p><h3 class="text-2xl md:text-3xl font-black text-[#071a3b]">🔥 Tendances</h3><p class="text-slate-500 font-semibold mt-1">Les événements qui attirent le plus l’attention.</p></div>
+                    <div><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Popularité</p><h3 class="text-2xl md:text-3xl font-black text-[#071a3b]">Tendances</h3><p class="text-slate-500 font-semibold mt-1">Les événements qui attirent le plus l’attention.</p></div>
                     <button onclick="showSection('client-events');document.getElementById('all-events-grid').scrollIntoView({behavior:'smooth'})" class="text-xs sm:text-sm font-black text-[#F97316]">Explorer tout →</button>
                 </div>
                 <div id="trending-events-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6"></div>
@@ -223,7 +223,7 @@
                 <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-xl px-4 py-3"><div><p class="text-xs font-bold text-slate-300 uppercase">Quantité</p><p id="buy-stock-note" class="text-[11px] text-slate-500 mt-1"></p></div><div class="flex items-center gap-3"><button type="button" onclick="changeBuyQuantity(-1)" class="w-9 h-9 rounded-lg bg-slate-700 text-white font-black">−</button><span id="buy-quantity" class="w-8 text-center font-black text-white">1</span><button type="button" onclick="changeBuyQuantity(1)" class="w-9 h-9 rounded-lg bg-slate-700 text-white font-black">+</button></div></div>
                 <div id="buy-total-box" class="rounded-xl bg-slate-900 border border-slate-700 p-4 text-sm"></div>
                 <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">Code Promo (Optionnel)</label><div class="flex gap-2"><input type="text" id="buy-promo" placeholder="Ex: JEUNES10" class="uppercase w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white"><button type="button" onclick="applyPromoCode()" class="bg-slate-700 text-xs px-3 py-2 rounded-xl font-bold hover:bg-slate-600 text-white">Appliquer</button></div><div id="buy-promo-message" class="text-xs mt-2"></div></div>
-                <button onclick="processPayment()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2"><i class="fa-solid fa-credit-card"></i> Payer avec Tchin</button>
+                <button onclick="processPayment()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2"><i class="fa-solid fa-credit-card"></i> Payer</button>
             </div>
             <div id="buy-step-2" class="hidden space-y-4 text-center"></div>
         </div>
