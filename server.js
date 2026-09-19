@@ -77,7 +77,7 @@ function customerFeeFor(amount){return Math.round(Number(amount||0)*TCHIN_CUSTOM
 function customerTotalFor(amount){const base=Number(amount||0);return base+customerFeeFor(base);}
 function logAction(client,actorType,actorId,action,entityType,entityId,metadata={}){return client.query('INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata) VALUES($1,$2,$3,$4,$5,$6)',[actorType,String(actorId||''),action,entityType||null,entityId?String(entityId):null,JSON.stringify(metadata)]);}
 
-const TICKET_TEMPLATE_PATH=require('path').join(__dirname,'ticket-template.jpeg');
+const TICKET_TEMPLATE_PATH=require('path').join(__dirname,'ticket-template.png');
 function escXml(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
 function ticketTextSize(value,maxWidth,base=17,min=10){let n=Math.max(0,String(value??'').length),size=base;while(size>min && n*size*0.56>maxWidth)size-=0.5;return Math.max(min,size);}
 function formatTicketDate(value){
