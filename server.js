@@ -89,7 +89,15 @@ function formatTicketDate(value){
   return raw;
 }
 async function buildTicketImage(ticket) {
-  // Génération du QR
+  // ============================================================
+  // 1. DIMENSIONS EXACTES DE LA TEMPLATE
+  // ============================================================
+  const TEMPLATE_WIDTH = 1672;
+  const TEMPLATE_HEIGHT = 941;
+
+  // ============================================================
+  // 2. GÉNÉRATION DU QR CODE
+  // ============================================================
   const qrRaw = await QRCode.toBuffer(String(ticket.code), {
     width: 240,
     margin: 0,
@@ -104,95 +112,103 @@ async function buildTicketImage(ticket) {
     .png()
     .toBuffer();
 
-  // Informations du billet
+  // ============================================================
+  // 3. DONNÉES DU BILLET
+  // ============================================================
   const eventTitle = clean(ticket.event_title, 255);
   const location = clean(ticket.event_location, 255);
   const type = clean(ticket.ticket_type, 120);
   const participant = clean(ticket.customer_name, 255);
   const date = formatTicketDate(ticket.event_date);
+
   const ticketNumber = clean(
     ticket.ticket_number || ticket.code,
     40
   ).toUpperCase();
 
-  /*
-   * NOUVELLE TEMPLATE
-   * Dimensions originales : 1672 x 941
-   *
-   * IMPORTANT :
-   * On ne redimensionne plus la template.
-   */
+  // ============================================================
+  // 4. ZONES DES BANDES GRISES
+  //
+  // La template reste totalement intacte.
+  // On écrit uniquement dans les bandes.
+  //
+  // Chaque bande :
+  // - commence vers x = 315
+  // - finit vers x = 905
+  // ============================================================
 
   const fields = [
     {
       text: date,
-      x: 315,
-      y: 356,
-      maxWidth: 590,
+      x: 338,
+      y: 355,
+      maxWidth: 540,
       size: 21
     },
+
     {
       text: location,
-      x: 315,
+      x: 338,
       y: 460,
-      maxWidth: 590,
+      maxWidth: 540,
       size: 21
     },
+
     {
       text: type,
-      x: 315,
-      y: 562,
-      maxWidth: 590,
+      x: 338,
+      y: 563,
+      maxWidth: 540,
       size: 21
     },
+
     {
       text: participant,
-      x: 315,
-      y: 672,
-      maxWidth: 590,
+      x: 338,
+      y: 671,
+      maxWidth: 540,
       size: 21
     },
+
     {
       text: eventTitle,
-      x: 315,
-      y: 787,
-      maxWidth: 830,
+      x: 338,
+      y: 783,
+      maxWidth: 780,
       size: 21
     }
   ];
 
-  /*
-   * Texte :
-   * - chaque texte reste dans sa bande grise
-   * - la taille diminue automatiquement si le texte est long
-   * - aucun texte ne déborde
-   */
+  // ============================================================
+  // 5. GÉNÉRATION DU TEXTE
+  // ============================================================
+
   const textSvg = fields
-    .map(f => {
+    .map(field => {
       const fontSize = ticketTextSize(
-        f.text,
-        f.maxWidth,
-        f.size,
+        field.text,
+        field.maxWidth,
+        field.size,
         13
       );
 
       return `
         <text
-          x="${f.x}"
-          y="${f.y}"
+          x="${field.x}"
+          y="${field.y}"
           fill="#17233d"
           font-family="Arial, Helvetica, sans-serif"
           font-size="${fontSize}px"
           font-weight="700"
-        >${escXml(f.text)}</text>
+        >${escXml(field.text)}</text>
       `;
     })
     .join('');
 
-  /*
-   * Numéro du billet
-   * Le cadre orange se trouve en bas à droite.
-   */
+  // ============================================================
+  // 6. NUMÉRO DU BILLET
+  // ============================================================
+
   const idSize = ticketTextSize(
     ticketNumber,
     230,
@@ -200,49 +216,57 @@ async function buildTicketImage(ticket) {
     11
   );
 
+  // Cadre orange du numéro
+  const ticketNumberSvg = `
+    <text
+      x="1415"
+      y="737"
+      text-anchor="middle"
+      dominant-baseline="middle"
+      fill="#17233d"
+      font-family="Arial, Helvetica, sans-serif"
+      font-size="${idSize}px"
+      font-weight="800"
+    >${escXml(ticketNumber)}</text>
+  `;
+
+  // ============================================================
+  // 7. OVERLAY
+  // ============================================================
+
   const overlay = Buffer.from(`
     <svg
-      width="1672"
-      height="941"
-      viewBox="0 0 1672 941"
+      width="${TEMPLATE_WIDTH}"
+      height="${TEMPLATE_HEIGHT}"
+      viewBox="0 0 ${TEMPLATE_WIDTH} ${TEMPLATE_HEIGHT}"
       xmlns="http://www.w3.org/2000/svg"
     >
       ${textSvg}
-
-      <text
-        x="1417"
-        y="737"
-        text-anchor="middle"
-        fill="#17233d"
-        font-family="Arial, Helvetica, sans-serif"
-        font-size="${idSize}px"
-        font-weight="800"
-      >${escXml(ticketNumber)}</text>
+      ${ticketNumberSvg}
     </svg>
   `);
 
-  /*
-   * IMPORTANT :
-   * On conserve la taille et les proportions EXACTES
-   * de ticket-template.png.
-   */
+  // ============================================================
+  // 8. COMPOSITION FINALE
+  //
+  // IMPORTANT :
+  // AUCUN .resize() SUR LA TEMPLATE.
+  // ============================================================
+
   return sharp(TICKET_TEMPLATE_PATH)
     .composite([
-      /*
-       * QR CODE
-       *
-       * Position dans la partie droite du billet.
-       * À ajuster seulement si tu veux déplacer le QR.
-       */
+      // ----------------------------------------------------------
+      // QR CODE
+      // ----------------------------------------------------------
       {
         input: qr,
-        left: 1342,
-        top: 510
+        left: 955,
+        top: 435
       },
 
-      /*
-       * Informations dynamiques
-       */
+      // ----------------------------------------------------------
+      // TEXTES + NUMÉRO
+      // ----------------------------------------------------------
       {
         input: overlay,
         left: 0,
