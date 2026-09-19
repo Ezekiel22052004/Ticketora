@@ -90,35 +90,27 @@ function formatTicketDate(value){
 }
 async function buildTicketImage(ticket) {
   // ============================================================
-  // TICKETORA - FORMAT EXACT DE LA TEMPLATE
-  // Dimensions : 1672 x 941
-  // ============================================================
-
-  const TEMPLATE_WIDTH = 1672;
-  const TEMPLATE_HEIGHT = 941;
-
-  // ============================================================
-  // 1. QR CODE
+  // 1. GÉNÉRATION DU QR CODE
   // ============================================================
 
   const qrRaw = await QRCode.toBuffer(String(ticket.code), {
-    width: 320,
+    width: 240,
     margin: 0,
     errorCorrectionLevel: 'M',
     type: 'png'
   });
 
-  // QR un peu plus grand : 180 x 180
+  // QR conservé à la taille actuelle
   const qr = await sharp(qrRaw)
-    .resize(180, 180, {
-      fit: 'fill'
+    .resize(150, 150, {
+      fit: 'contain'
     })
     .png()
     .toBuffer();
 
 
   // ============================================================
-  // 2. DONNÉES
+  // 2. DONNÉES DU BILLET
   // ============================================================
 
   const eventTitle = clean(ticket.event_title, 255);
@@ -134,96 +126,141 @@ async function buildTicketImage(ticket) {
 
 
   // ============================================================
-  // 3. POSITION DES TEXTES
-  //
-  // Les valeurs sont centrées verticalement dans les bandes.
+  // 3. DIMENSIONS EXACTES DE LA TEMPLATE
+  // ============================================================
+
+  const WIDTH = 1672;
+  const HEIGHT = 941;
+
+
+  // ============================================================
+  // 4. ZONES DES INFORMATIONS
   //
   // IMPORTANT :
-  // x = début du texte
-  // centerY = centre vertical de la bande
+  // y = CENTRE VERTICAL de chaque bande grise.
+  //
+  // Le texte utilise ensuite :
+  // dominant-baseline="middle"
+  //
+  // Donc le texte est réellement centré dans la bande.
   // ============================================================
 
   const fields = [
     {
       text: date,
 
-      // DATE
-      x: 333,
-      centerY: 350,
+      // Bande DATE
+      x: 335,
+      y: 350,
 
-      maxWidth: 550,
-      size: 21
+      // largeur intérieure de la bande
+      maxWidth: 545,
+
+      // taille normale
+      size: 21,
+
+      // taille minimale
+      minSize: 12
     },
 
     {
       text: location,
 
-      // LIEU
-      x: 333,
-      centerY: 455,
+      // Bande LIEU
+      x: 335,
+      y: 453,
 
-      maxWidth: 550,
-      size: 21
+      maxWidth: 545,
+
+      size: 21,
+      minSize: 12
     },
 
     {
       text: type,
 
-      // TYPE DE BILLET
-      x: 333,
-      centerY: 558,
+      // Bande TYPE DE BILLET
+      x: 335,
+      y: 556,
 
-      maxWidth: 550,
-      size: 21
+      maxWidth: 545,
+
+      size: 21,
+      minSize: 12
     },
 
     {
       text: participant,
 
-      // NOM DU PARTICIPANT
-      x: 333,
-      centerY: 665,
+      // Bande NOM DU PARTICIPANT
+      x: 335,
+      y: 669,
 
-      maxWidth: 550,
-      size: 21
+      maxWidth: 545,
+
+      size: 21,
+      minSize: 12
     },
 
     {
       text: eventTitle,
 
-      // NOM DE L'ÉVÉNEMENT
-      x: 333,
-      centerY: 775,
+      // Bande NOM DE L'ÉVÉNEMENT
+      x: 335,
+      y: 785,
 
       maxWidth: 800,
-      size: 21
+
+      size: 21,
+      minSize: 12
     }
   ];
 
 
   // ============================================================
-  // 4. TEXTE DES BANDES
+  // 5. GÉNÉRATION DES TEXTES
+  //
+  // Le texte est :
+  // - centré verticalement
+  // - limité à la largeur de sa bande
+  // - réduit automatiquement si nécessaire
+  // - impossible à faire sortir de la bande
   // ============================================================
 
   const textSvg = fields
     .map(field => {
-
-      const fontSize = ticketTextSize(
+      let fontSize = ticketTextSize(
         field.text,
         field.maxWidth,
         field.size,
-        13
+        field.minSize
+      );
+
+      // Sécurité supplémentaire
+      if (!Number.isFinite(fontSize)) {
+        fontSize = field.size;
+      }
+
+      fontSize = Math.max(
+        field.minSize,
+        Math.min(field.size, fontSize)
       );
 
       return `
         <text
           x="${field.x}"
-          y="${field.centerY}"
+          y="${field.y}"
           fill="#17233d"
           font-family="Arial, Helvetica, sans-serif"
           font-size="${fontSize}px"
           font-weight="700"
           dominant-baseline="middle"
+          text-anchor="start"
+          lengthAdjust="spacingAndGlyphs"
+          ${field.text.length > 35
+            ? `textLength="${field.maxWidth}"`
+            : ''
+          }
         >${escXml(field.text)}</text>
       `;
     })
@@ -231,35 +268,39 @@ async function buildTicketImage(ticket) {
 
 
   // ============================================================
-  // 5. NUMÉRO DU BILLET
+  // 6. NUMÉRO DU BILLET
   // ============================================================
 
   const idSize = ticketTextSize(
     ticketNumber,
-    230,
+    215,
     18,
     11
   );
 
 
   // ============================================================
-  // 6. SVG OVERLAY
+  // 7. SVG OVERLAY
   // ============================================================
 
   const overlay = Buffer.from(`
     <svg
-      width="${TEMPLATE_WIDTH}"
-      height="${TEMPLATE_HEIGHT}"
-      viewBox="0 0 ${TEMPLATE_WIDTH} ${TEMPLATE_HEIGHT}"
+      width="${WIDTH}"
+      height="${HEIGHT}"
+      viewBox="0 0 ${WIDTH} ${HEIGHT}"
       xmlns="http://www.w3.org/2000/svg"
     >
 
       ${textSvg}
 
-      <!-- NUMÉRO DU BILLET -->
+      <!-- =====================================================
+           NUMÉRO DU BILLET
+           Centré exactement dans le cadre orange
+           ===================================================== -->
+
       <text
         x="1417"
-        y="737"
+        y="735"
         text-anchor="middle"
         dominant-baseline="middle"
         fill="#17233d"
@@ -273,9 +314,12 @@ async function buildTicketImage(ticket) {
 
 
   // ============================================================
-  // 7. COMPOSITION FINALE
+  // 8. COMPOSITION FINALE
   //
-  // La template reste exactement dans ses dimensions originales.
+  // La template garde EXACTEMENT :
+  // 1672 x 941
+  //
+  // Le QR reste à sa position actuelle.
   // ============================================================
 
   return sharp(TICKET_TEMPLATE_PATH)
@@ -283,13 +327,11 @@ async function buildTicketImage(ticket) {
 
       // --------------------------------------------------------
       // QR CODE
-      // Position conservée
-      // Taille augmentée : 180 x 180
       // --------------------------------------------------------
       {
         input: qr,
-        left: 960,
-        top: 375
+        left: 975,
+        top: 390
       },
 
       // --------------------------------------------------------
