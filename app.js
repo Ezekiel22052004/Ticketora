@@ -2,6 +2,37 @@ const API=(window.TICKETORA_API_URL||'').replace(/\/$/,'');
 let cachedEvents=[];let activeBuyingEvent=null;let activeBuyingCategory=null;let activeBuyQuantity=1;let appliedDiscount=0;let appliedPromo=null;let paymentPollTimer=null;
 const $=id=>document.getElementById(id);
 async function api(path,options={}){const r=await fetch(`${API}${path}`,{credentials:'include',...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.message||'Erreur serveur');return d;}
+
+// ---------- ACCÈS PUBLIC DU SITE ----------
+(function initTicketoraSiteAccess(){
+ if(!['/','/index.html'].includes(location.pathname)) return;
+ const style=document.createElement('style');
+ style.textContent=`#ticketora-access-gate{position:fixed;inset:0;z-index:999999;background:#07152f;color:#fff;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Arial,sans-serif}#ticketora-access-gate .box{width:min(430px,100%);background:#102342;border:1px solid #294261;border-radius:24px;padding:32px;box-shadow:0 25px 80px rgba(0,0,0,.35)}#ticketora-access-gate h1{margin:0 0 8px;font-size:25px;font-weight:900}#ticketora-access-gate p{color:#aebed3;line-height:1.6;font-size:14px}.ta-input{width:100%;box-sizing:border-box;padding:13px 14px;margin-top:10px;border-radius:12px;border:1px solid #395270;background:#0b1d39;color:#fff;outline:none}.ta-btn{width:100%;padding:13px;margin-top:14px;border:0;border-radius:12px;background:#f97316;color:#fff;font-weight:800;cursor:pointer}.ta-msg{margin-top:12px;color:#ffb4b4;font-size:12px;font-weight:700;text-align:center}.ta-logo{color:#ff8a00;font-size:30px;font-weight:900;margin-bottom:22px}`;
+ document.head.appendChild(style);
+ let gate=null;
+ const createGate=(mode)=>{
+   if(gate)gate.remove();
+   gate=document.createElement('div');gate.id='ticketora-access-gate';
+   if(mode==='CLOSED'){
+     gate.innerHTML='<div class="box"><div class="ta-logo">TICKETORA</div><h1>Site temporairement fermé</h1><p>Ticketora est actuellement en maintenance. Le site sera de nouveau accessible prochainement.</p></div>';
+   }else{
+     gate.innerHTML='<div class="box"><div class="ta-logo">TICKETORA</div><h1>Accès protégé</h1><p>Ce site est actuellement réservé aux personnes autorisées.</p><form id="ta-access-form"><input id="ta-email" class="ta-input" type="email" required placeholder="Email d’accès"><input id="ta-password" class="ta-input" type="password" required placeholder="Mot de passe"><button class="ta-btn">Accéder au site</button><div id="ta-msg" class="ta-msg"></div></form></div>';
+     gate.querySelector('#ta-access-form').addEventListener('submit',async ev=>{
+       ev.preventDefault();const msg=gate.querySelector('#ta-msg');msg.textContent='Vérification…';
+       try{await api('/api/site-access/login',{method:'POST',body:JSON.stringify({email:gate.querySelector('#ta-email').value,password:gate.querySelector('#ta-password').value})});gate.remove();gate=null;location.reload();}catch(e){msg.textContent=e.message;}
+     });
+   }
+   document.body.appendChild(gate);
+ };
+ const check=async()=>{
+   try{
+     const d=await api('/api/site-access/status');
+     if(d.mode==='PUBLIC'||d.accessGranted){if(gate){gate.remove();gate=null;}return;}
+     createGate(d.mode);
+   }catch(e){createGate('CLOSED');}
+ };
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',check);else check();
+})();
 function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 function fmt(n){return Number(n||0).toLocaleString('fr-FR');}
 function getVisitorKey(){let k=localStorage.getItem('ticketora_visitor_key');if(!k){k=(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`);localStorage.setItem('ticketora_visitor_key',k);}return k;}
@@ -230,514 +261,90 @@ function filterOrgParticipants(){const q=($('org-participant-search')?.value||''
 async function generateOrgReport(){const id=Number($('org-report-event')?.value);if(!id)return;try{const d=await api(`/api/organizers/events/${id}/report`),r=d.report||{};$('org-report-box').innerHTML=[['Billets vendus en ligne',r.tickets_sold||0],['Billets générés',r.organizer_generated||0],['Total billets',r.total_tickets||0],['Entrées validées',r.validated||0],['Participants absents',r.absent||0],['Taux de présence',(r.attendance_rate||0)+'%'],['Revenus en ligne',fmt(r.revenue||0)+' FCFA'],['Revenu organisateur',fmt(r.organizer_revenue||0)+' FCFA']].map(x=>`<div class="bg-white border rounded-2xl p-5 shadow-sm"><p class="text-xs text-slate-400 font-black uppercase">${x[0]}</p><p class="text-2xl font-black text-[#071a3b] mt-2">${x[1]}</p></div>`).join('');const cats=r.by_category||[],gen=r.generated_tickets||[];if($('org-report-extra'))$('org-report-extra').innerHTML=`<div class="mb-6"><h4 class="font-black text-slate-800 mb-3">Répartition par type</h4>${cats.length?cats.map(x=>`<div class="grid grid-cols-4 gap-2 py-2 border-b text-sm"><span class="font-semibold">${esc(x.ticket_type||'Standard')}</span><span>${Number(x.online_tickets||0)} en ligne</span><span>${Number(x.generated_tickets||0)} générés</span><span>${Number(x.total_tickets||0)} total</span></div>`).join(''):'Aucune donnée.'}</div><div><h4 class="font-black text-slate-800 mb-3">🎟️ Billets générés par l’organisateur (${gen.length})</h4>${gen.length?`<div class="overflow-auto"><table class="w-full text-left text-xs"><thead class="bg-slate-50"><tr><th class="p-3">N° billet</th><th class="p-3">Participant</th><th class="p-3">Type</th><th class="p-3">Généré par</th><th class="p-3">Date</th><th class="p-3">Entrée</th></tr></thead><tbody>${gen.map(x=>`<tr class="border-b"><td class="p-3 font-mono font-bold">${esc(x.ticket_number||x.code)}</td><td class="p-3 font-bold">${esc(x.customer_name)}</td><td class="p-3">${esc(x.ticket_type)}</td><td class="p-3">${esc(x.generated_by||'Organisateur')}</td><td class="p-3">${x.generated_at?new Date(x.generated_at).toLocaleString('fr-FR'):'—'}</td><td class="p-3">${x.used?(x.used_at?new Date(x.used_at).toLocaleString('fr-FR'):'VALIDÉ'):'NON VALIDÉ'}</td></tr>`).join('')}</tbody></table></div>`:'Aucun billet généré pour cet événement.'}</div>`;}catch(e){alert(e.message)}}
 async function downloadOrgReport(){
  const id=Number($('org-report-event')?.value);
-if(!id)return;
-
-try{
+ if(!id)return;
+ try{
   const d=await api(`/api/organizers/events/${id}/report`);
-  const r=d.report||{};
-  const e=d.event||{};
-
-  if(!window.jspdf?.jsPDF){
-    alert('Le module PDF n’est pas chargé.');
-    return;
-  }
-
+  const r=d.report||{},e=d.event||{};
+  if(!window.jspdf?.jsPDF){alert('Le module PDF n’est pas chargé.');return;}
   const {jsPDF}=window.jspdf;
-  const doc=new jsPDF({
-    unit:'mm',
-    format:'a4',
-    orientation:'portrait'
-  });
-
-  const logo=new Image();
-  logo.crossOrigin='anonymous';
-
-  const pageWidth=210;
-  const margin=18;
-  const contentWidth=174;
-
-  const navy=[7,26,59];
-  const gray=[100,116,139];
-  const lightGray=[241,245,249];
-  const border=[203,213,225];
-  const orange=[249,115,22];
-
-  const money=(v)=>{
-    return Number(v||0).toLocaleString('fr-FR');
+  const doc=new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+  const logo=new Image();logo.crossOrigin='anonymous';
+  const W=210,M=16,CW=178;
+  const navy=[7,26,59],gray=[91,105,125],light=[245,247,250],border=[210,218,228],orange=[249,115,22];
+  const money=v=>Number(v||0).toLocaleString('fr-FR');
+  const safe=v=>String(v??'-');
+  const wrap=(v,w)=>doc.splitTextToSize(safe(v),w-5).slice(0,3);
+  const row=(cells,y,h,header=false)=>{
+   const widths=[48,86,44];let x=M;
+   cells.forEach((cell,i)=>{
+    doc.setFillColor(...(header?light:[255,255,255]));
+    doc.setDrawColor(...border);doc.setLineWidth(.25);doc.rect(x,y,widths[i],h,'FD');
+    doc.setTextColor(...(header?navy:gray));doc.setFontSize(header?7.5:7.2);doc.setFont(undefined,header?'bold':'normal');
+    doc.text(wrap(cell,widths[i]),x+2.5,y+4.8);
+    x+=widths[i];
+   });
   };
-
-  const text=(v)=>{
-    return String(v??'-');
-  };
-
-  const drawLine=(y)=>{
-    doc.setDrawColor(...border);
-    doc.setLineWidth(0.25);
-    doc.line(margin,y,pageWidth-margin,y);
-  };
-
-  const drawTableRow=(cells,y,heights,options={})=>{
-    const h=heights;
-
-    let x=margin;
-
-    cells.forEach((cell,i)=>{
-      const width=options.widths[i];
-
-      doc.setFillColor(
-        ...(options.header ? lightGray : [255,255,255])
-      );
-
-      doc.setDrawColor(...border);
-      doc.rect(x,y,width,h,'FD');
-
-      doc.setTextColor(...(options.header ? navy : gray));
-      doc.setFontSize(options.header ? 7.5 : 7.5);
-      doc.setFont(undefined,options.header ? 'bold' : 'normal');
-
-      const value=text(cell);
-
-      const lines=doc.splitTextToSize(
-        value,
-        width-6
-      );
-
-      doc.text(
-        lines.slice(0,3),
-        x+3,
-        y+5
-      );
-
-      x+=width;
-    });
-  };
-
   const draw=()=>{
-
-    /* =========================
-       EN-TÊTE
-    ========================= */
-
-    try{
-      doc.addImage(
-        logo,
-        'PNG',
-        margin,
-        10,
-        17,
-        17
-      );
-    }catch{}
-
-    doc.setTextColor(...navy);
-    doc.setFontSize(18);
-    doc.setFont(undefined,'bold');
-    doc.text('TICKETORA',40,19);
-
-    doc.setFontSize(8);
-    doc.setFont(undefined,'normal');
-    doc.setTextColor(...gray);
-    doc.text(
-      'Plateforme de billetterie et de gestion d’événements',
-      40,
-      25
-    );
-
-    doc.setDrawColor(...orange);
-    doc.setLineWidth(0.8);
-    doc.line(
-      margin,
-      32,
-      pageWidth-margin,
-      32
-    );
-
-    /* =========================
-       TITRE
-    ========================= */
-
-    doc.setTextColor(...navy);
-    doc.setFontSize(15);
-    doc.setFont(undefined,'bold');
-
-    doc.text(
-      'RAPPORT OFFICIEL DE L’ÉVÉNEMENT',
-      margin,
-      43
-    );
-
-    doc.setFontSize(10);
-    doc.setFont(undefined,'bold');
-    doc.setTextColor(...navy);
-
-    doc.text(
-      text(e.title||'Événement'),
-      margin,
-      51
-    );
-
-    doc.setFontSize(8);
-    doc.setFont(undefined,'normal');
-    doc.setTextColor(...gray);
-
-    doc.text(
-      `Date : ${text(e.date)}`,
-      margin,
-      57
-    );
-
-    doc.text(
-      `Organisateur : ${text(e.organizer_name||e.organizer||'-')}`,
-      margin,
-      62
-    );
-
-    doc.text(
-      `Lieu : ${text(e.venue_name||e.location||'-')}${e.city?' · '+e.city:''}`,
-      margin,
-      67
-    );
-
-    drawLine(72);
-
-    /* =========================
-       TABLEAU PRINCIPAL
-    ========================= */
-
-    let y=78;
-
-    doc.setTextColor(...navy);
-    doc.setFontSize(11);
-    doc.setFont(undefined,'bold');
-
-    doc.text(
-      'RÉSULTATS DE L’ÉVÉNEMENT',
-      margin,
-      y
-    );
-
-    y+=5;
-
-    const widths=[
-      47,
-      80,
-      47
-    ];
-
-    drawTableRow(
-      [
-        'RUBRIQUE',
-        'INDICATEUR',
-        'RÉSULTAT'
-      ],
-      y,
-      9,
-      {
-        widths,
-        header:true
-      }
-    );
-
-    y+=9;
-
-    /* ---------- BILLETTERIE ---------- */
-
-    const rows=[];
-
-    rows.push(
-      ['BILLETTERIE','Billets vendus en ligne',r.tickets_sold||0],
-      ['BILLETTERIE','Billets générés par l’organisateur',r.organizer_generated||0],
-      ['BILLETTERIE','Total des billets',r.total_tickets||0]
-    );
-
-    /* ---------- PRÉSENCE ---------- */
-
-    rows.push(
-      ['PRÉSENCE','Entrées validées',r.validated||0],
-      ['PRÉSENCE','Absents',r.absent||0],
-      ['PRÉSENCE','Taux de présence',(r.attendance_rate||0)+' %']
-    );
-
-    /* ---------- FINANCE ---------- */
-
-    rows.push(
-      ['FINANCE','Revenus bruts',money(r.revenue)+' FCFA'],
-      ['FINANCE','Revenu organisateur',money(r.organizer_revenue)+' FCFA'],
-      ['FINANCE','Commission Ticketora',money(r.commission)+' FCFA'],
-      ['FINANCE','Panier moyen',money(r.average_ticket)+' FCFA']
-    );
-
-    rows.forEach(row=>{
-
-      drawTableRow(
-        row,
-        y,
-        9,
-        {
-          widths,
-          header:false
-        }
-      );
-
-      y+=9;
-    });
-
-    /* =========================
-       CATÉGORIES
-    ========================= */
-
-    y+=7;
-
-    doc.setTextColor(...navy);
-    doc.setFontSize(11);
-    doc.setFont(undefined,'bold');
-
-    doc.text(
-      'CATÉGORIES DE BILLETS',
-      margin,
-      y
-    );
-
-    y+=5;
-
-    drawTableRow(
-      [
-        'CATÉGORIE',
-        'INDICATEUR',
-        'RÉSULTAT'
-      ],
-      y,
-      9,
-      {
-        widths,
-        header:true
-      }
-    );
-
-    y+=9;
-
-    const cats=r.by_category||[];
-
-    if(!cats.length){
-
-      drawTableRow(
-        [
-          '-',
-          'Aucune catégorie disponible',
-          '-'
-        ],
-        y,
-        9,
-        {
-          widths,
-          header:false
-        }
-      );
-
-      y+=9;
-
-    }else{
-
-      cats.slice(0,8).forEach(c=>{
-
-        drawTableRow(
-          [
-            text(c.ticket_type||'Standard'),
-            'Billets / Entrées validées',
-            `${Number(c.total_tickets||0)} / ${Number(c.validated||0)}`
-          ],
-          y,
-          9,
-          {
-            widths,
-            header:false
-          }
-        );
-
-        y+=9;
-      });
-    }
-
-    /* =========================
-       SYNTHÈSE
-    ========================= */
-
-    y+=8;
-
-    doc.setTextColor(...navy);
-    doc.setFontSize(11);
-    doc.setFont(undefined,'bold');
-
-    doc.text(
-      'SYNTHÈSE',
-      margin,
-      y
-    );
-
-    y+=6;
-
-    doc.setFontSize(8);
-    doc.setFont(undefined,'normal');
-    doc.setTextColor(...gray);
-
-    const synthesis=
-      `L’événement compte ${Number(r.total_tickets||0)} billet(s) au total, `+
-      `dont ${Number(r.tickets_sold||0)} billet(s) vendu(s) en ligne `+
-      `et ${Number(r.organizer_generated||0)} billet(s) généré(s) par l’organisateur. `+
-      `${Number(r.validated||0)} entrée(s) ont été validée(s), `+
-      `soit un taux de présence de ${Number(r.attendance_rate||0)} %.`;
-
-    const synthesisLines=
-      doc.splitTextToSize(
-        synthesis,
-        contentWidth
-      );
-
-    doc.text(
-      synthesisLines,
-      margin,
-      y
-    );
-
-    y+=synthesisLines.length*4+7;
-
-    /* =========================
-       ANALYSE FINANCIÈRE
-    ========================= */
-
-    doc.setTextColor(...navy);
-    doc.setFontSize(11);
-    doc.setFont(undefined,'bold');
-
-    doc.text(
-      'ANALYSE FINANCIÈRE',
-      margin,
-      y
-    );
-
-    y+=6;
-
-    doc.setFontSize(8);
-    doc.setFont(undefined,'normal');
-    doc.setTextColor(...gray);
-
-    const finance=
-      `Les revenus bruts enregistrés s’élèvent à ${money(r.revenue)} FCFA. `+
-      `Le revenu attribué à l’organisateur est de ${money(r.organizer_revenue)} FCFA, `+
-      `pour une commission Ticketora de ${money(r.commission)} FCFA. `+
-      `Le panier moyen est estimé à ${money(r.average_ticket)} FCFA.`;
-
-    const financeLines=
-      doc.splitTextToSize(
-        finance,
-        contentWidth
-      );
-
-    doc.text(
-      financeLines,
-      margin,
-      y
-    );
-
-    y+=financeLines.length*4+7;
-
-    /* =========================
-       LECTURE DES CATÉGORIES
-    ========================= */
-
-    doc.setTextColor(...navy);
-    doc.setFontSize(11);
-    doc.setFont(undefined,'bold');
-
-    doc.text(
-      'LECTURE DES CATÉGORIES',
-      margin,
-      y
-    );
-
-    y+=6;
-
-    doc.setFontSize(8);
-    doc.setFont(undefined,'normal');
-    doc.setTextColor(...gray);
-
-    let categoryText='';
-
-    if(cats.length){
-
-      categoryText=cats
-        .slice(0,8)
-        .map(c=>{
-          const name=text(c.ticket_type||'Standard');
-          const total=Number(c.total_tickets||0);
-          const valid=Number(c.validated||0);
-
-          return `${name} : ${total} billet(s), ${valid} validé(s).`;
-        })
-        .join(' ');
-    }else{
-
-      categoryText=
-        'Aucune donnée détaillée par catégorie disponible.';
-    }
-
-    const categoryLines=
-      doc.splitTextToSize(
-        categoryText,
-        contentWidth
-      );
-
-    doc.text(
-      categoryLines,
-      margin,
-      y
-    );
-
-    /* =========================
-       PIED DE PAGE
-    ========================= */
-
-    const footerY=287;
-
-    drawLine(footerY-5);
-
-    doc.setFontSize(7);
-    doc.setFont(undefined,'normal');
-    doc.setTextColor(148,163,184);
-
-    doc.text(
-      `Généré le ${new Date().toLocaleString('fr-FR')} · Ticketora`,
-      margin,
-      footerY
-    );
-
-    doc.text(
-      'Document officiel',
-      pageWidth-margin,
-      footerY,
-      {align:'right'}
-    );
-
-    /* =========================
-       ENREGISTREMENT
-    ========================= */
-
-    doc.save(
-      `Ticketora_Rapport_${String(
-        e.title||'evenement'
-      )
-      .replace(/[^a-z0-9]+/gi,'_')
-      .slice(0,40)}.pdf`
-    );
+   try{doc.addImage(logo,'PNG',M,9,16,16);}catch{}
+   doc.setTextColor(...navy);doc.setFont(undefined,'bold');doc.setFontSize(17);doc.text('TICKETORA',38,17);
+   doc.setFont(undefined,'normal');doc.setFontSize(7.5);doc.setTextColor(...gray);doc.text('Plateforme de billetterie et de gestion d’événements',38,23);
+   doc.setDrawColor(...orange);doc.setLineWidth(.8);doc.line(M,30,W-M,30);
+
+   doc.setTextColor(...navy);doc.setFont(undefined,'bold');doc.setFontSize(14);doc.text('RAPPORT OFFICIEL DE L’ÉVÉNEMENT',M,41);
+   doc.setFontSize(9.5);doc.text(safe(e.title||'Événement').slice(0,90),M,48);
+   doc.setFont(undefined,'normal');doc.setFontSize(7.5);doc.setTextColor(...gray);
+   doc.text(`Date : ${safe(e.date)}`,M,54);
+   doc.text(`Organisateur : ${safe(e.organizer_name||e.organizer||'-')}`,M,59);
+   doc.text(`Lieu : ${safe(e.venue_name||e.location||'-')}${e.city?' · '+e.city:''}`,M,64);
+
+   doc.setTextColor(...navy);doc.setFont(undefined,'bold');doc.setFontSize(10.5);doc.text('RÉSULTATS DE L’ÉVÉNEMENT',M,74);
+   let y=78;
+   row(['RUBRIQUE','INDICATEUR','RÉSULTAT'],y,8,true);y+=8;
+
+   const rows=[
+    ['BILLETTERIE','Billets vendus en ligne',r.tickets_sold||0],
+    ['BILLETTERIE','Billets générés par l’organisateur',r.organizer_generated||0],
+    ['BILLETTERIE','Total des billets',r.total_tickets||0],
+    ['PRÉSENCE','Entrées validées',r.validated||0],
+    ['PRÉSENCE','Absents',r.absent||0],
+    ['PRÉSENCE','Taux de présence',`${r.attendance_rate||0} %`],
+    ['FINANCE','Revenus bruts',`${money(r.revenue)} FCFA`],
+    ['FINANCE','Revenu organisateur',`${money(r.organizer_revenue)} FCFA`],
+    ['FINANCE','Commission Ticketora',`${money(r.commission)} FCFA`],
+    ['FINANCE','Panier moyen',`${money(r.average_ticket)} FCFA`]
+   ];
+   rows.forEach(x=>{row(x,y,7.5,false);y+=7.5;});
+
+   const cats=r.by_category||[];
+   if(y<164)y=164;
+   doc.setTextColor(...navy);doc.setFont(undefined,'bold');doc.setFontSize(10.5);doc.text('CATÉGORIES',M,y+4);y+=8;
+   row(['RUBRIQUE','INDICATEUR','RÉSULTAT'],y,8,true);y+=8;
+   if(cats.length){
+    cats.slice(0,5).forEach(c=>{row(['CATÉGORIE',safe(c.ticket_type||'Standard'),`${Number(c.total_tickets||0)} billet(s) · ${Number(c.validated||0)} validé(s)`],y,7.5,false);y+=7.5;});
+   }else{row(['CATÉGORIE','Aucune catégorie disponible','-'],y,7.5,false);y+=7.5;}
+
+   // Une seule table pour les résultats; les textes d'analyse restent sous la table.
+   y+=6;
+   const synthesis=`L’événement compte ${Number(r.total_tickets||0)} billet(s), dont ${Number(r.tickets_sold||0)} vendu(s) en ligne et ${Number(r.organizer_generated||0)} généré(s) par l’organisateur. ${Number(r.validated||0)} entrée(s) ont été validée(s), soit ${Number(r.attendance_rate||0)} % du total.`;
+   const finance=`Les revenus bruts enregistrés s’élèvent à ${money(r.revenue)} FCFA. Le revenu organisateur est de ${money(r.organizer_revenue)} FCFA et la commission Ticketora de ${money(r.commission)} FCFA. Le panier moyen est de ${money(r.average_ticket)} FCFA.`;
+   const categoryText=cats.length?cats.slice(0,5).map(c=>`${safe(c.ticket_type||'Standard')} : ${Number(c.total_tickets||0)} billet(s), ${Number(c.validated||0)} validé(s).`).join(' '):'Aucune donnée détaillée par catégorie disponible.';
+   const section=(title,body)=>{
+    doc.setTextColor(...navy);doc.setFont(undefined,'bold');doc.setFontSize(9.5);doc.text(title,M,y);y+=4.5;
+    doc.setTextColor(...gray);doc.setFont(undefined,'normal');doc.setFontSize(7.3);
+    const lines=doc.splitTextToSize(body,CW);doc.text(lines.slice(0,4),M,y);y+=Math.min(4,lines.length)*3.5+4;
+   };
+   section('SYNTHÈSE',synthesis);
+   section('ANALYSE FINANCIÈRE',finance);
+   section('LECTURE DES CATÉGORIES',categoryText);
+
+   const fy=287;doc.setDrawColor(...border);doc.setLineWidth(.25);doc.line(M,fy-5,W-M,fy-5);
+   doc.setTextColor(148,163,184);doc.setFontSize(6.8);doc.setFont(undefined,'normal');
+   doc.text(`Généré le ${new Date().toLocaleString('fr-FR')} · Ticketora`,M,fy);
+   doc.text('Document officiel',W-M,fy,{align:'right'});
+   doc.save(`Ticketora_Rapport_${safe(e.title||'evenement').replace(/[^a-z0-9]+/gi,'_').slice(0,40)}.pdf`);
   };
-
-  logo.onload=draw;
-  logo.onerror=draw;
-  logo.src=location.origin+'/logo.png';
-
-}catch(e){
-  console.error(e);
-  alert(e.message);
+  logo.onload=draw;logo.onerror=draw;logo.src=location.origin+'/logo.png';
+ }catch(e){console.error(e);alert(e.message);}
 }
 
 window.loadPublicAds=loadPublicAds;

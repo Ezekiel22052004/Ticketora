@@ -361,7 +361,27 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
 <div class="ticketora-panel"><div class="flex items-center justify-between"><div><h3>Mes cagnottes</h3><p>Gérez leur publication et consultez les contributions.</p></div></div><div id="admin-cagnottes-list" class="mt-4 space-y-3"></div></div>
 </div></section>
             <section id="tab-logs" class="tab-content hidden space-y-6"><div><h1 class="text-2xl font-extrabold">Journaux d'activité</h1><p class="text-sm text-slate-500">Historique des actions administratives.</p></div><div class="ticketora-panel p-0 overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-[#243b5d] text-[10px] uppercase text-[#7892b5]"><th class="p-4">Date</th><th class="p-4">Action</th><th class="p-4">Type</th><th class="p-4">Détails</th></tr></thead><tbody id="admin-logs-list"></tbody></table></div></section>
-            <section id="tab-settings" class="tab-content hidden space-y-6"><div><h1 class="text-2xl font-extrabold">Paramètres</h1><p class="text-sm text-slate-500">Préférences locales de l'administration.</p></div><div class="ticketora-panel max-w-xl"><h3 class="mb-4">🔐 Modifier le mot de passe administrateur</h3><form onsubmit="updateAdminPassword(event)" class="space-y-3"><input id="admin-pwd-old" type="password" minlength="8" required placeholder="Ancien mot de passe" class="w-full p-3 rounded-xl"><input id="admin-pwd-new" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères min.)" class="w-full p-3 rounded-xl"><input id="admin-pwd-confirm" type="password" minlength="8" required placeholder="Confirmer le nouveau mot de passe" class="w-full p-3 rounded-xl"><div id="admin-pwd-msg" class="hidden text-xs p-3 rounded-xl font-semibold"></div><button class="bg-[#F97316] text-white font-bold px-5 py-3 rounded-xl">Modifier le mot de passe</button></form></div><div class="ticketora-panel max-w-xl"><label class="flex items-center justify-between gap-4"><span><b>Actualisation automatique</b><small class="block text-[#7892b5] mt-1">Actualiser les données toutes les 30 secondes.</small></span><input id="admin-auto-refresh" type="checkbox" class="w-5 h-5 accent-orange-500" checked onchange="toggleAdminAutoRefresh(this.checked)"></label><button onclick="clearAdminPreferences()" class="mt-5 border border-[#2b4364] px-4 py-2 rounded-xl text-xs font-bold">Réinitialiser les préférences</button></div></section>
+            <section id="tab-settings" class="tab-content hidden space-y-6"><div><h1 class="text-2xl font-extrabold">Paramètres</h1><p class="text-sm text-slate-500">Préférences locales de l'administration.</p></div>
+<div class="ticketora-panel max-w-3xl">
+  <h3>🌐 Contrôle d’accès du site</h3>
+  <p class="mt-1">Choisissez si Ticketora est ouvert, fermé ou protégé par identifiants.</p>
+  <form id="site-access-form" onsubmit="saveSiteAccess(event)" class="space-y-4 mt-5">
+    <div>
+      <label class="block text-[11px] font-bold uppercase text-[#7892b5] mb-2">Mode du site</label>
+      <select id="site-access-mode" class="w-full p-3 rounded-xl">
+        <option value="PUBLIC">ACTIVÉ — Site ouvert à tout le monde</option>
+        <option value="CLOSED">DÉSACTIVÉ — Site fermé à tout le monde</option>
+        <option value="PROTECTED">PROTÉGÉ — Email + mot de passe obligatoires</option>
+      </select>
+    </div>
+    <div id="site-access-credentials" class="grid md:grid-cols-2 gap-3">
+      <input id="site-access-email" type="email" placeholder="Email d’accès">
+      <input id="site-access-password" type="password" minlength="8" placeholder="Nouveau mot de passe d’accès (8 caractères min.)">
+    </div>
+    <div id="site-access-msg" class="hidden text-xs p-3 rounded-xl font-semibold"></div>
+    <button class="bg-[#F97316] text-white font-bold px-5 py-3 rounded-xl">Enregistrer le mode d’accès</button>
+  </form>
+</div><div class="ticketora-panel max-w-xl"><h3 class="mb-4">🔐 Modifier le mot de passe administrateur</h3><form onsubmit="updateAdminPassword(event)" class="space-y-3"><input id="admin-pwd-old" type="password" minlength="8" required placeholder="Ancien mot de passe" class="w-full p-3 rounded-xl"><input id="admin-pwd-new" type="password" minlength="8" required placeholder="Nouveau mot de passe (8 caractères min.)" class="w-full p-3 rounded-xl"><input id="admin-pwd-confirm" type="password" minlength="8" required placeholder="Confirmer le nouveau mot de passe" class="w-full p-3 rounded-xl"><div id="admin-pwd-msg" class="hidden text-xs p-3 rounded-xl font-semibold"></div><button class="bg-[#F97316] text-white font-bold px-5 py-3 rounded-xl">Modifier le mot de passe</button></form></div><div class="ticketora-panel max-w-xl"><label class="flex items-center justify-between gap-4"><span><b>Actualisation automatique</b><small class="block text-[#7892b5] mt-1">Actualiser les données toutes les 30 secondes.</small></span><input id="admin-auto-refresh" type="checkbox" class="w-5 h-5 accent-orange-500" checked onchange="toggleAdminAutoRefresh(this.checked)"></label><button onclick="clearAdminPreferences()" class="mt-5 border border-[#2b4364] px-4 py-2 rounded-xl text-xs font-bold">Réinitialiser les préférences</button></div></section>
 
             <!-- TAB 5: SCANNER SIMULATOR -->
             <section id="tab-scanner" class="tab-content hidden space-y-6">
@@ -456,5 +476,18 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
     <!-- Script de logique JS -->
     <script src="config.js"></script>
     <script src="admin.js"></script>
+<script>
+(function(){
+ const SA_API=(window.TICKETORA_API_URL||'').replace(/\/$/,'');
+ const sa=(p,o={})=>fetch(`${SA_API}${p}`,{credentials:'include',headers:{'Content-Type':'application/json',...(o.headers||{})},...o}).then(async r=>{let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.message||'Erreur serveur');return d;});
+ const modeEl=()=>document.getElementById('site-access-mode');
+ function refreshFields(){const p=modeEl()?.value==='PROTECTED';document.getElementById('site-access-credentials')?.classList.toggle('hidden',!p);}
+ window.loadSiteAccess=async function(){try{const d=await sa('/api/site-access/status');if(modeEl())modeEl().value=d.mode||'PUBLIC';const em=document.getElementById('site-access-email');if(em)em.value=d.access_email||'';refreshFields();}catch(e){}};
+ window.saveSiteAccess=async function(ev){ev.preventDefault();const msg=document.getElementById('site-access-msg');msg.className='text-xs p-3 rounded-xl font-semibold bg-blue-500/10 text-blue-300';msg.textContent='Enregistrement…';msg.classList.remove('hidden');try{const mode=modeEl().value;const d=await sa('/api/admin/site-access',{method:'POST',body:JSON.stringify({mode,email:document.getElementById('site-access-email').value,password:document.getElementById('site-access-password').value})});msg.className='text-xs p-3 rounded-xl font-semibold bg-emerald-500/10 text-emerald-400';msg.textContent=d.message||'Mode enregistré.';document.getElementById('site-access-password').value='';await loadSiteAccess();}catch(e){msg.className='text-xs p-3 rounded-xl font-semibold bg-rose-500/10 text-rose-400';msg.textContent=e.message;}};
+ modeEl()?.addEventListener('change',refreshFields);
+ document.addEventListener('DOMContentLoaded',()=>{loadSiteAccess();refreshFields();});
+})();
+</script>
+
 <script>if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(console.error));</script></body>
 </html>

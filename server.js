@@ -402,6 +402,29 @@ async function ensureTicketDownloadTable(){
   )`);
   await pool.query('CREATE INDEX IF NOT EXISTS idx_ticket_downloads_ticket ON ticket_downloads(ticket_id,downloaded_at DESC)');
 }
+async function ensureSiteAccessTable(){
+  if(!process.env.DATABASE_URL) return;
+  await pool.query(`CREATE TABLE IF NOT EXISTS site_access (
+    id SMALLINT PRIMARY KEY DEFAULT 1 CHECK(id=1),
+    mode VARCHAR(20) NOT NULL DEFAULT 'PUBLIC' CHECK(mode IN ('PUBLIC','CLOSED','PROTECTED')),
+    access_email VARCHAR(255),
+    access_password_hash TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query(`INSERT INTO site_access(id,mode,version)
+    VALUES(1,'PUBLIC',1)
+    ON CONFLICT (id) DO NOTHING`);
+  await pool.query(`ALTER TABLE site_access ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1`);
+  await pool.query(`ALTER TABLE site_access ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+}
+
+async function getSiteAccess(){
+  await ensureSiteAccessTable();
+  const r=await pool.query('SELECT id,mode,access_email,version,updated_at FROM site_access WHERE id=1');
+  return r.rows[0]||{id:1,mode:'PUBLIC',access_email:null,version:1};
+}
+
 async function ensureAdminCredentials(){
   if(!process.env.DATABASE_URL) return;
   await pool.query(`CREATE TABLE IF NOT EXISTS admin_credentials (
@@ -418,7 +441,69 @@ async function ensureAdminCredentials(){
   }
 }
 
+// ---------- CONTRÔLE D'ACCÈS DU SITE ----------
+app.get('/api/site-access/status',asyncRoute(async(req,res)=>{
+  const a=await getSiteAccess();
+  const isAdmin=req.session?.user?.role==='ADMIN';
+  const granted=!!(isAdmin || (req.session?.siteAccessGranted===true && Number(req.session.siteAccessVersion||0)===Number(a.version||1)));
+  res.json({success:true,mode:a.mode,accessGranted:granted,access_email:a.access_email||null});
+}));
+
+app.post('/api/site-access/login',authRateLimit,asyncRoute(async(req,res)=>{
+  const a=await getSiteAccess();
+  if(a.mode==='PUBLIC') return res.json({success:true,mode:'PUBLIC',accessGranted:true});
+  if(a.mode==='CLOSED') return res.status(403).json({success:false,message:'Le site est actuellement fermé.'});
+  const email=clean(req.body.email,255).toLowerCase();
+  const password=String(req.body.password||'');
+  if(!email||!password) return res.status(400).json({success:false,message:'Email et mot de passe obligatoires.'});
+  if(!a.access_email||!a.access_password_hash||email!==String(a.access_email).toLowerCase() || !(await bcrypt.compare(password,a.access_password_hash))){
+    return res.status(401).json({success:false,message:'Email ou mot de passe incorrect.'});
+  }
+  req.session.siteAccessGranted=true;
+  req.session.siteAccessVersion=Number(a.version||1);
+  req.session.siteAccessEmail=email;
+  res.json({success:true,mode:'PROTECTED',accessGranted:true});
+}));
+
+app.post('/api/admin/site-access',requireAdmin,asyncRoute(async(req,res)=>{
+  await ensureSiteAccessTable();
+  const mode=clean(req.body.mode,20).toUpperCase();
+  if(!['PUBLIC','CLOSED','PROTECTED'].includes(mode)) return res.status(400).json({success:false,message:'Mode d’accès invalide.'});
+  let email=null,hash=null;
+  if(mode==='PROTECTED'){
+    email=clean(req.body.email,255).toLowerCase();
+    const password=String(req.body.password||'');
+    if(!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({success:false,message:'Email d’accès invalide.'});
+    if(password.length<8) return res.status(400).json({success:false,message:'Le mot de passe d’accès doit contenir au moins 8 caractères.'});
+    hash=await bcrypt.hash(password,12);
+  }
+  const r=await pool.query(`UPDATE site_access
+    SET mode=$1,
+        access_email=$2,
+        access_password_hash=$3,
+        version=version+1,
+        updated_at=NOW()
+    WHERE id=1
+    RETURNING id,mode,access_email,version,updated_at`,[mode,email,hash]);
+  res.json({success:true,siteAccess:r.rows[0],message:mode==='PUBLIC'?'Site ouvert au public.':mode==='CLOSED'?'Site fermé au public.':'Site protégé par email et mot de passe.'});
+}));
+
 app.get('/api/health',(req,res)=>res.json({success:true,service:'ticketora',time:new Date().toISOString()}));
+
+// Blocage serveur des API publiques lorsque le site est fermé/protégé.
+// Les routes d'administration, le statut d'accès et la connexion protégée restent accessibles.
+app.use(asyncRoute(async(req,res,next)=>{
+  if(!req.path.startsWith('/api/')) return next();
+  if(req.path==='/api/health' || req.path==='/api/site-access/status' || req.path==='/api/site-access/login' || req.path==='/api/webhooks/tchin') return next();
+  if(req.path.startsWith('/api/admin/')) return next();
+  const a=await getSiteAccess();
+  if(a.mode==='PUBLIC') return next();
+  if(req.session?.user?.role==='ADMIN') return next();
+  const granted=req.session?.siteAccessGranted===true && Number(req.session.siteAccessVersion||0)===Number(a.version||1);
+  if(granted) return next();
+  return res.status(403).json({success:false,code:'SITE_ACCESS_REQUIRED',mode:a.mode,message:a.mode==='CLOSED'?'Le site est actuellement fermé.':'Accès protégé : veuillez vous connecter.'});
+}));
+
 
 
 async function ensureV7MultiTicketTables(){
@@ -1333,7 +1418,18 @@ app.get('/api/tickets/:code/image',asyncRoute(async(req,res)=>{
 
 
 // Static files for local same-origin testing.
+app.use(asyncRoute(async(req,res,next)=>{
+  const pathname=req.path||'/';
+  if(pathname==='/admin.html' || pathname.startsWith('/admin.') || pathname.startsWith('/api/')) return next();
+  if(pathname==='/' || pathname==='/index.html'){
+    const a=await getSiteAccess();
+    if(a.mode==='CLOSED' && req.session?.user?.role!=='ADMIN'){
+      return res.status(503).type('html').send(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ticketora — Maintenance</title><style>body{margin:0;background:#07152f;color:#fff;font-family:Arial,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center}.box{max-width:620px;padding:40px}.logo{font-size:34px;font-weight:900;color:#ff8a00}.box h1{font-size:28px;margin:18px 0 10px}.box p{color:#b7c6dc;line-height:1.7}</style></head><body><div class="box"><div class="logo">TICKETORA</div><h1>Site temporairement fermé</h1><p>Ticketora est actuellement en maintenance. Merci de revenir plus tard.</p></div></body></html>`);
+    }
+  }
+  next();
+}));
 app.use(express.static(__dirname));
 app.use((err,req,res,next)=>{console.error(err);if(res.headersSent)return next(err);if(err?.type==='entity.too.large')return res.status(413).json({success:false,message:'Fichier ou requête trop volumineux.'});res.status(500).json({success:false,message:'Erreur interne du serveur.'});});
 
-app.listen(PORT,async()=>{try{await ensureEventImageColumn();await ensureAdminPayoutTable();await ensurePayoutTchinColumns();await ensureChatTable();await ensureScannerTable();await ensureCagnotteTables();await ensurePromoTables();await ensureV3Tables();await ensureV7MultiTicketTables();await ensureOrganizerGeneratedTicketColumns();await ensureTicketDownloadTable();await ensureAdminCredentials();console.log(`Ticketora API sur http://localhost:${PORT}`);setInterval(syncPendingTchinPayouts,120000);}catch(e){console.error('Initialisation base admin retraits:',e.message);console.log(`Ticketora API sur http://localhost:${PORT}`);}});
+app.listen(PORT,async()=>{try{await ensureEventImageColumn();await ensureAdminPayoutTable();await ensurePayoutTchinColumns();await ensureChatTable();await ensureScannerTable();await ensureCagnotteTables();await ensurePromoTables();await ensureV3Tables();await ensureV7MultiTicketTables();await ensureOrganizerGeneratedTicketColumns();await ensureTicketDownloadTable();await ensureAdminCredentials();await ensureSiteAccessTable();console.log(`Ticketora API sur http://localhost:${PORT}`);setInterval(syncPendingTchinPayouts,120000);}catch(e){console.error('Initialisation base admin retraits:',e.message);console.log(`Ticketora API sur http://localhost:${PORT}`);}});
