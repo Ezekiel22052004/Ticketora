@@ -88,24 +88,169 @@ function formatTicketDate(value){
   const d=new Date(raw); if(Number.isFinite(d.getTime())) return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'});
   return raw;
 }
-async function buildTicketImage(ticket){
-  const qrRaw=await QRCode.toBuffer(String(ticket.code),{width:160,margin:0,errorCorrectionLevel:'M',type:'png'});
-  const qr=await sharp(qrRaw).resize(80,80,{fit:'fill'}).png().toBuffer();
-  const eventTitle=clean(ticket.event_title,255), location=clean(ticket.event_location,255), type=clean(ticket.ticket_type,120), participant=clean(ticket.customer_name,255), date=formatTicketDate(ticket.event_date), code=clean(ticket.code,32).toUpperCase(), ticketNumber=clean(ticket.ticket_number||ticket.code,40).toUpperCase();
-  const fields=[
-    {text:date,x:252,y:70,max:405,size:17},
-    {text:location,x:252,y:151,max:405,size:17},
-    {text:type,x:252,y:232,max:405,size:17},
-    {text:participant,x:252,y:313,max:405,size:17},
-    {text:eventTitle,x:252,y:394,max:605,size:17}
+async function buildTicketImage(ticket) {
+  // Génération du QR
+  const qrRaw = await QRCode.toBuffer(String(ticket.code), {
+    width: 240,
+    margin: 0,
+    errorCorrectionLevel: 'M',
+    type: 'png'
+  });
+
+  const qr = await sharp(qrRaw)
+    .resize(150, 150, {
+      fit: 'contain'
+    })
+    .png()
+    .toBuffer();
+
+  // Informations du billet
+  const eventTitle = clean(ticket.event_title, 255);
+  const location = clean(ticket.event_location, 255);
+  const type = clean(ticket.ticket_type, 120);
+  const participant = clean(ticket.customer_name, 255);
+  const date = formatTicketDate(ticket.event_date);
+  const ticketNumber = clean(
+    ticket.ticket_number || ticket.code,
+    40
+  ).toUpperCase();
+
+  /*
+   * NOUVELLE TEMPLATE
+   * Dimensions originales : 1672 x 941
+   *
+   * IMPORTANT :
+   * On ne redimensionne plus la template.
+   */
+
+  const fields = [
+    {
+      text: date,
+      x: 315,
+      y: 356,
+      maxWidth: 590,
+      size: 21
+    },
+    {
+      text: location,
+      x: 315,
+      y: 460,
+      maxWidth: 590,
+      size: 21
+    },
+    {
+      text: type,
+      x: 315,
+      y: 562,
+      maxWidth: 590,
+      size: 21
+    },
+    {
+      text: participant,
+      x: 315,
+      y: 672,
+      maxWidth: 590,
+      size: 21
+    },
+    {
+      text: eventTitle,
+      x: 315,
+      y: 787,
+      maxWidth: 830,
+      size: 21
+    }
   ];
-  const textSvg=fields.map(f=>`<text x="${f.x}" y="${f.y}" fill="#17233d" font-family="Arial,Helvetica,sans-serif" font-size="${ticketTextSize(f.text,f.max,f.size,10)}px" font-weight="700">${escXml(f.text)}</text>`).join('');
-  const idSize=ticketTextSize(ticketNumber,135,13,9);
-  const overlay=Buffer.from(`<svg width="1241" height="429" viewBox="0 0 1241 429" xmlns="http://www.w3.org/2000/svg"><g>${textSvg}</g><text x="1082" y="349" text-anchor="middle" fill="#17233d" font-family="Arial,Helvetica,sans-serif" font-size="${idSize}px" font-weight="800">${escXml(ticketNumber)}</text></svg>`);
-  return sharp(TICKET_TEMPLATE_PATH).resize(1241,429,{fit:'fill'}).composite([
-    {input:qr,left:1041,top:218},
-    {input:overlay,left:0,top:0}
-  ]).png().toBuffer();
+
+  /*
+   * Texte :
+   * - chaque texte reste dans sa bande grise
+   * - la taille diminue automatiquement si le texte est long
+   * - aucun texte ne déborde
+   */
+  const textSvg = fields
+    .map(f => {
+      const fontSize = ticketTextSize(
+        f.text,
+        f.maxWidth,
+        f.size,
+        13
+      );
+
+      return `
+        <text
+          x="${f.x}"
+          y="${f.y}"
+          fill="#17233d"
+          font-family="Arial, Helvetica, sans-serif"
+          font-size="${fontSize}px"
+          font-weight="700"
+        >${escXml(f.text)}</text>
+      `;
+    })
+    .join('');
+
+  /*
+   * Numéro du billet
+   * Le cadre orange se trouve en bas à droite.
+   */
+  const idSize = ticketTextSize(
+    ticketNumber,
+    230,
+    18,
+    11
+  );
+
+  const overlay = Buffer.from(`
+    <svg
+      width="1672"
+      height="941"
+      viewBox="0 0 1672 941"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      ${textSvg}
+
+      <text
+        x="1417"
+        y="737"
+        text-anchor="middle"
+        fill="#17233d"
+        font-family="Arial, Helvetica, sans-serif"
+        font-size="${idSize}px"
+        font-weight="800"
+      >${escXml(ticketNumber)}</text>
+    </svg>
+  `);
+
+  /*
+   * IMPORTANT :
+   * On conserve la taille et les proportions EXACTES
+   * de ticket-template.png.
+   */
+  return sharp(TICKET_TEMPLATE_PATH)
+    .composite([
+      /*
+       * QR CODE
+       *
+       * Position dans la partie droite du billet.
+       * À ajuster seulement si tu veux déplacer le QR.
+       */
+      {
+        input: qr,
+        left: 1342,
+        top: 510
+      },
+
+      /*
+       * Informations dynamiques
+       */
+      {
+        input: overlay,
+        left: 0,
+        top: 0
+      }
+    ])
+    .png()
+    .toBuffer();
 }
 
 async function ensureEventImageColumn(){
