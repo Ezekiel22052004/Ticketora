@@ -90,123 +90,119 @@ function formatTicketDate(value){
 }
 async function buildTicketImage(ticket) {
   // ============================================================
-  // TEMPLATE : 1672 x 941 px
+  // TICKETORA - FORMAT EXACT DE LA TEMPLATE
+  // Dimensions : 1672 x 941
   // ============================================================
 
-  const WIDTH = 1672;
-  const HEIGHT = 941;
+  const TEMPLATE_WIDTH = 1672;
+  const TEMPLATE_HEIGHT = 941;
 
   // ============================================================
-  // QR CODE
+  // 1. QR CODE
   // ============================================================
 
   const qrRaw = await QRCode.toBuffer(String(ticket.code), {
-    width: 300,
+    width: 320,
     margin: 0,
     errorCorrectionLevel: 'M',
     type: 'png'
   });
 
+  // QR un peu plus grand : 180 x 180
   const qr = await sharp(qrRaw)
-    .resize(150, 150, {
+    .resize(180, 180, {
       fit: 'fill'
     })
     .png()
     .toBuffer();
 
+
   // ============================================================
-  // DONNÉES
+  // 2. DONNÉES
   // ============================================================
 
-  const date = clean(
-    formatTicketDate(ticket.event_date),
-    255
-  );
-
-  const location = clean(
-    ticket.event_location,
-    255
-  );
-
-  const type = clean(
-    ticket.ticket_type,
-    120
-  );
-
-  const participant = clean(
-    ticket.customer_name,
-    255
-  );
-
-  const eventTitle = clean(
-    ticket.event_title,
-    255
-  );
+  const eventTitle = clean(ticket.event_title, 255);
+  const location = clean(ticket.event_location, 255);
+  const type = clean(ticket.ticket_type, 120);
+  const participant = clean(ticket.customer_name, 255);
+  const date = formatTicketDate(ticket.event_date);
 
   const ticketNumber = clean(
     ticket.ticket_number || ticket.code,
     40
   ).toUpperCase();
 
+
   // ============================================================
-  // VALEURS DANS LES BANDES GRISES
+  // 3. POSITION DES TEXTES
   //
-  // Les titres :
-  // DATE
-  // LIEU
-  // TYPE DE BILLET
-  // NOM DU PARTICIPANT
-  // NOM DE L'ÉVÉNEMENT
+  // Les valeurs sont centrées verticalement dans les bandes.
   //
-  // sont déjà présents dans la template.
-  //
-  // On ajoute uniquement les valeurs.
+  // IMPORTANT :
+  // x = début du texte
+  // centerY = centre vertical de la bande
   // ============================================================
 
   const fields = [
     {
       text: date,
-      x: 338,
-      y: 355,
-      maxWidth: 560,
+
+      // DATE
+      x: 333,
+      centerY: 350,
+
+      maxWidth: 550,
       size: 21
     },
 
     {
       text: location,
-      x: 338,
-      y: 459,
-      maxWidth: 560,
+
+      // LIEU
+      x: 333,
+      centerY: 455,
+
+      maxWidth: 550,
       size: 21
     },
 
     {
       text: type,
-      x: 338,
-      y: 563,
-      maxWidth: 560,
+
+      // TYPE DE BILLET
+      x: 333,
+      centerY: 558,
+
+      maxWidth: 550,
       size: 21
     },
 
     {
       text: participant,
-      x: 338,
-      y: 671,
-      maxWidth: 560,
+
+      // NOM DU PARTICIPANT
+      x: 333,
+      centerY: 665,
+
+      maxWidth: 550,
       size: 21
     },
 
     {
       text: eventTitle,
-      x: 338,
-      y: 785,
-      maxWidth: 790,
+
+      // NOM DE L'ÉVÉNEMENT
+      x: 333,
+      centerY: 775,
+
+      maxWidth: 800,
       size: 21
     }
   ];
 
+
   // ============================================================
-  // TEXTE SVG
+  // 4. TEXTE DES BANDES
   // ============================================================
 
   const textSvg = fields
@@ -222,83 +218,83 @@ async function buildTicketImage(ticket) {
       return `
         <text
           x="${field.x}"
-          y="${field.y}"
+          y="${field.centerY}"
           fill="#17233d"
           font-family="Arial, Helvetica, sans-serif"
           font-size="${fontSize}px"
           font-weight="700"
+          dominant-baseline="middle"
         >${escXml(field.text)}</text>
       `;
     })
     .join('');
 
+
   // ============================================================
-  // NUMÉRO DU BILLET
+  // 5. NUMÉRO DU BILLET
   // ============================================================
 
   const idSize = ticketTextSize(
     ticketNumber,
-    220,
+    230,
     18,
     11
   );
 
-  const numberSvg = `
-    <text
-      x="1415"
-      y="737"
-      text-anchor="middle"
-      dominant-baseline="middle"
-      fill="#17233d"
-      font-family="Arial, Helvetica, sans-serif"
-      font-size="${idSize}px"
-      font-weight="800"
-    >${escXml(ticketNumber)}</text>
-  `;
 
   // ============================================================
-  // OVERLAY
+  // 6. SVG OVERLAY
   // ============================================================
 
   const overlay = Buffer.from(`
     <svg
-      width="${WIDTH}"
-      height="${HEIGHT}"
-      viewBox="0 0 ${WIDTH} ${HEIGHT}"
+      width="${TEMPLATE_WIDTH}"
+      height="${TEMPLATE_HEIGHT}"
+      viewBox="0 0 ${TEMPLATE_WIDTH} ${TEMPLATE_HEIGHT}"
       xmlns="http://www.w3.org/2000/svg"
     >
+
       ${textSvg}
 
-      ${numberSvg}
+      <!-- NUMÉRO DU BILLET -->
+      <text
+        x="1417"
+        y="737"
+        text-anchor="middle"
+        dominant-baseline="middle"
+        fill="#17233d"
+        font-family="Arial, Helvetica, sans-serif"
+        font-size="${idSize}px"
+        font-weight="800"
+      >${escXml(ticketNumber)}</text>
+
     </svg>
   `);
 
+
   // ============================================================
-  // IMAGE FINALE
+  // 7. COMPOSITION FINALE
   //
-  // IMPORTANT :
-  // PAS DE resize() SUR LA TEMPLATE.
+  // La template reste exactement dans ses dimensions originales.
   // ============================================================
 
   return sharp(TICKET_TEMPLATE_PATH)
     .composite([
 
-      // ==========================================================
+      // --------------------------------------------------------
       // QR CODE
-      // Zone libre située entre les informations et la
-      // séparation verticale.
-      // ==========================================================
-
+      // Position conservée
+      // Taille augmentée : 180 x 180
+      // --------------------------------------------------------
       {
         input: qr,
-        left: 955,
-        top: 435
+        left: 960,
+        top: 375
       },
 
-      // ==========================================================
-      // TEXTES DYNAMIQUES
-      // ==========================================================
-
+      // --------------------------------------------------------
+      // TEXTES
+      // --------------------------------------------------------
       {
         input: overlay,
         left: 0,
