@@ -90,16 +90,18 @@ function formatTicketDate(value){
 }
 async function buildTicketImage(ticket) {
   // ============================================================
-  // 1. DIMENSIONS EXACTES DE LA TEMPLATE
+  // TEMPLATE : 1672 x 941 px
   // ============================================================
-  const TEMPLATE_WIDTH = 1672;
-  const TEMPLATE_HEIGHT = 941;
+
+  const WIDTH = 1672;
+  const HEIGHT = 941;
 
   // ============================================================
-  // 2. GÉNÉRATION DU QR CODE
+  // QR CODE
   // ============================================================
+
   const qrRaw = await QRCode.toBuffer(String(ticket.code), {
-    width: 240,
+    width: 300,
     margin: 0,
     errorCorrectionLevel: 'M',
     type: 'png'
@@ -107,19 +109,39 @@ async function buildTicketImage(ticket) {
 
   const qr = await sharp(qrRaw)
     .resize(150, 150, {
-      fit: 'contain'
+      fit: 'fill'
     })
     .png()
     .toBuffer();
 
   // ============================================================
-  // 3. DONNÉES DU BILLET
+  // DONNÉES
   // ============================================================
-  const eventTitle = clean(ticket.event_title, 255);
-  const location = clean(ticket.event_location, 255);
-  const type = clean(ticket.ticket_type, 120);
-  const participant = clean(ticket.customer_name, 255);
-  const date = formatTicketDate(ticket.event_date);
+
+  const date = clean(
+    formatTicketDate(ticket.event_date),
+    255
+  );
+
+  const location = clean(
+    ticket.event_location,
+    255
+  );
+
+  const type = clean(
+    ticket.ticket_type,
+    120
+  );
+
+  const participant = clean(
+    ticket.customer_name,
+    255
+  );
+
+  const eventTitle = clean(
+    ticket.event_title,
+    255
+  );
 
   const ticketNumber = clean(
     ticket.ticket_number || ticket.code,
@@ -127,14 +149,18 @@ async function buildTicketImage(ticket) {
   ).toUpperCase();
 
   // ============================================================
-  // 4. ZONES DES BANDES GRISES
+  // VALEURS DANS LES BANDES GRISES
   //
-  // La template reste totalement intacte.
-  // On écrit uniquement dans les bandes.
+  // Les titres :
+  // DATE
+  // LIEU
+  // TYPE DE BILLET
+  // NOM DU PARTICIPANT
+  // NOM DE L'ÉVÉNEMENT
   //
-  // Chaque bande :
-  // - commence vers x = 315
-  // - finit vers x = 905
+  // sont déjà présents dans la template.
+  //
+  // On ajoute uniquement les valeurs.
   // ============================================================
 
   const fields = [
@@ -142,15 +168,15 @@ async function buildTicketImage(ticket) {
       text: date,
       x: 338,
       y: 355,
-      maxWidth: 540,
+      maxWidth: 560,
       size: 21
     },
 
     {
       text: location,
       x: 338,
-      y: 460,
-      maxWidth: 540,
+      y: 459,
+      maxWidth: 560,
       size: 21
     },
 
@@ -158,7 +184,7 @@ async function buildTicketImage(ticket) {
       text: type,
       x: 338,
       y: 563,
-      maxWidth: 540,
+      maxWidth: 560,
       size: 21
     },
 
@@ -166,25 +192,26 @@ async function buildTicketImage(ticket) {
       text: participant,
       x: 338,
       y: 671,
-      maxWidth: 540,
+      maxWidth: 560,
       size: 21
     },
 
     {
       text: eventTitle,
       x: 338,
-      y: 783,
-      maxWidth: 780,
+      y: 785,
+      maxWidth: 790,
       size: 21
     }
   ];
 
   // ============================================================
-  // 5. GÉNÉRATION DU TEXTE
+  // TEXTE SVG
   // ============================================================
 
   const textSvg = fields
     .map(field => {
+
       const fontSize = ticketTextSize(
         field.text,
         field.maxWidth,
@@ -206,18 +233,17 @@ async function buildTicketImage(ticket) {
     .join('');
 
   // ============================================================
-  // 6. NUMÉRO DU BILLET
+  // NUMÉRO DU BILLET
   // ============================================================
 
   const idSize = ticketTextSize(
     ticketNumber,
-    230,
+    220,
     18,
     11
   );
 
-  // Cadre orange du numéro
-  const ticketNumberSvg = `
+  const numberSvg = `
     <text
       x="1415"
       y="737"
@@ -231,47 +257,54 @@ async function buildTicketImage(ticket) {
   `;
 
   // ============================================================
-  // 7. OVERLAY
+  // OVERLAY
   // ============================================================
 
   const overlay = Buffer.from(`
     <svg
-      width="${TEMPLATE_WIDTH}"
-      height="${TEMPLATE_HEIGHT}"
-      viewBox="0 0 ${TEMPLATE_WIDTH} ${TEMPLATE_HEIGHT}"
+      width="${WIDTH}"
+      height="${HEIGHT}"
+      viewBox="0 0 ${WIDTH} ${HEIGHT}"
       xmlns="http://www.w3.org/2000/svg"
     >
       ${textSvg}
-      ${ticketNumberSvg}
+
+      ${numberSvg}
     </svg>
   `);
 
   // ============================================================
-  // 8. COMPOSITION FINALE
+  // IMAGE FINALE
   //
   // IMPORTANT :
-  // AUCUN .resize() SUR LA TEMPLATE.
+  // PAS DE resize() SUR LA TEMPLATE.
   // ============================================================
 
   return sharp(TICKET_TEMPLATE_PATH)
     .composite([
-      // ----------------------------------------------------------
+
+      // ==========================================================
       // QR CODE
-      // ----------------------------------------------------------
+      // Zone libre située entre les informations et la
+      // séparation verticale.
+      // ==========================================================
+
       {
         input: qr,
         left: 955,
         top: 435
       },
 
-      // ----------------------------------------------------------
-      // TEXTES + NUMÉRO
-      // ----------------------------------------------------------
+      // ==========================================================
+      // TEXTES DYNAMIQUES
+      // ==========================================================
+
       {
         input: overlay,
         left: 0,
         top: 0
       }
+
     ])
     .png()
     .toBuffer();
