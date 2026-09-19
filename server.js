@@ -100,7 +100,6 @@ async function buildTicketImage(ticket) {
     type: 'png'
   });
 
-  // QR conservé à la taille actuelle
   const qr = await sharp(qrRaw)
     .resize(150, 150, {
       fit: 'contain'
@@ -136,81 +135,52 @@ async function buildTicketImage(ticket) {
   // ============================================================
   // 4. ZONES DES INFORMATIONS
   //
-  // IMPORTANT :
-  // y = CENTRE VERTICAL de chaque bande grise.
-  //
-  // Le texte utilise ensuite :
-  // dominant-baseline="middle"
-  //
-  // Donc le texte est réellement centré dans la bande.
+  // Textes descendus de 12 px pour mieux rester
+  // dans la partie basse des bandes grises.
   // ============================================================
 
   const fields = [
     {
       text: date,
-
-      // Bande DATE
       x: 335,
-      y: 350,
-
-      // largeur intérieure de la bande
+      y: 362,
       maxWidth: 545,
-
-      // taille normale
       size: 21,
-
-      // taille minimale
       minSize: 12
     },
 
     {
       text: location,
-
-      // Bande LIEU
       x: 335,
-      y: 453,
-
+      y: 465,
       maxWidth: 545,
-
       size: 21,
       minSize: 12
     },
 
     {
       text: type,
-
-      // Bande TYPE DE BILLET
       x: 335,
-      y: 556,
-
+      y: 568,
       maxWidth: 545,
-
       size: 21,
       minSize: 12
     },
 
     {
       text: participant,
-
-      // Bande NOM DU PARTICIPANT
       x: 335,
-      y: 669,
-
+      y: 681,
       maxWidth: 545,
-
       size: 21,
       minSize: 12
     },
 
     {
       text: eventTitle,
-
-      // Bande NOM DE L'ÉVÉNEMENT
       x: 335,
-      y: 785,
-
+      y: 797,
       maxWidth: 800,
-
       size: 21,
       minSize: 12
     }
@@ -219,12 +189,6 @@ async function buildTicketImage(ticket) {
 
   // ============================================================
   // 5. GÉNÉRATION DES TEXTES
-  //
-  // Le texte est :
-  // - centré verticalement
-  // - limité à la largeur de sa bande
-  // - réduit automatiquement si nécessaire
-  // - impossible à faire sortir de la bande
   // ============================================================
 
   const textSvg = fields
@@ -293,11 +257,7 @@ async function buildTicketImage(ticket) {
 
       ${textSvg}
 
-      <!-- =====================================================
-           NUMÉRO DU BILLET
-           Centré exactement dans le cadre orange
-           ===================================================== -->
-
+      <!-- NUMÉRO DU BILLET -->
       <text
         x="1417"
         y="735"
@@ -315,28 +275,19 @@ async function buildTicketImage(ticket) {
 
   // ============================================================
   // 8. COMPOSITION FINALE
-  //
-  // La template garde EXACTEMENT :
-  // 1672 x 941
-  //
-  // Le QR reste à sa position actuelle.
   // ============================================================
 
   return sharp(TICKET_TEMPLATE_PATH)
     .composite([
 
-      // --------------------------------------------------------
       // QR CODE
-      // --------------------------------------------------------
       {
         input: qr,
         left: 975,
         top: 390
       },
 
-      // --------------------------------------------------------
       // TEXTES
-      // --------------------------------------------------------
       {
         input: overlay,
         left: 0,
