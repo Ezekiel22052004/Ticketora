@@ -237,6 +237,13 @@ CREATE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes(code);
 CREATE INDEX IF NOT EXISTS idx_promo_usages_promo ON promo_usages(promo_id,status);
 CREATE INDEX IF NOT EXISTS idx_promo_usages_customer ON promo_usages(promo_id,customer_email,status);
 
+-- TICKETORA PARTENAIRE ORGANISATEUR: statut officiel et taux de commission
+ALTER TABLE organizers ADD COLUMN IF NOT EXISTS is_partner BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE organizers ADD COLUMN IF NOT EXISTS partner_since TIMESTAMPTZ;
+ALTER TABLE organizers ADD COLUMN IF NOT EXISTS partner_rate_under_5000 NUMERIC(5,2) NOT NULL DEFAULT 1.00;
+ALTER TABLE organizers ADD COLUMN IF NOT EXISTS partner_rate_from_5000 NUMERIC(5,2) NOT NULL DEFAULT 3.00;
+CREATE INDEX IF NOT EXISTS idx_organizers_is_partner ON organizers(is_partner);
+
 -- TICKETORA V3: comptes participants, suivi des scans, partenaires
 CREATE TABLE IF NOT EXISTS participant_users (
   id BIGSERIAL PRIMARY KEY,

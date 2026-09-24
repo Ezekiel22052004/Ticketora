@@ -45,6 +45,9 @@
         ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
     input:not([type=checkbox]):not([type=radio]),select,textarea{color:#0f172a!important;background-color:#f8fafc!important;caret-color:#0f172a!important}input:not([type=checkbox]):not([type=radio])::placeholder,textarea::placeholder{color:#64748b!important;opacity:1!important}
+
+    .partner-verified-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;background:rgba(16,185,129,.12);color:#34d399;font-size:9px;font-weight:800}
+    .partner-inactive-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;background:rgba(148,163,184,.12);color:#94a3b8;font-size:9px;font-weight:800}
 </style>
 
     <style>
@@ -296,12 +299,25 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
   <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
     <div>
       <h1 class="text-2xl font-extrabold">Partenaires</h1>
-      <p class="text-sm text-[#7892b5]">Ajoutez et publiez les logos des partenaires qui apparaîtront automatiquement tout en bas de la page d’accueil.</p>
+      <p class="text-sm text-[#7892b5]">Gérez les organisateurs partenaires officiels et les logos partenaires affichés sur la page d’accueil.</p>
     </div>
     <span class="text-xs text-[#7892b5]">Les logos actifs sont visibles côté utilisateur.</span>
   </div>
 
   <div class="grid xl:grid-cols-[.8fr_1.2fr] gap-5">
+    <div class="ticketora-panel p-5">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
+        <div>
+          <h2 class="font-extrabold text-lg">Organisateurs partenaires officiels</h2>
+          <p class="text-xs text-[#7892b5] mt-1">Activez ou désactivez le partenariat d’un organisateur déjà validé.</p>
+        </div>
+        <button onclick="loadOrganizerPartners()" class="text-xs font-bold text-[#ff9a1f] hover:underline">Actualiser</button>
+      </div>
+      <div id="organizer-partners-list" class="space-y-3">
+        <div class="text-center text-[#7892b5] text-xs py-5">Chargement des organisateurs...</div>
+      </div>
+    </div>
+
     <div class="ticketora-panel p-5">
       <h2 class="font-extrabold text-lg">Ajouter un partenaire</h2>
       <p class="text-xs text-[#7892b5] mt-1">Choisissez un logo depuis votre ordinateur. Il sera optimisé avant publication.</p>

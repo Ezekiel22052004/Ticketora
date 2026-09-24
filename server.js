@@ -71,7 +71,13 @@ function clean(v,max=255){return String(v??'').trim().slice(0,max);}
 function positiveInt(v){const n=Number(v);return Number.isInteger(n)&&n>=0?n:null;}
 function fmtRef(){return 'CMD-'+crypto.randomBytes(5).toString('hex').toUpperCase();}
 function fmtTicket(){return 'TKT-'+crypto.randomBytes(5).toString('hex').toUpperCase();}
-function commissionFor(amount){const rate=amount<5000?0.02:0.05;const admin=Math.round(amount*rate);return {rate:rate*100,admin,organizer:amount-admin};}
+function commissionFor(amount,organizer=null){
+  const partner=Boolean(organizer?.is_partner);
+  const ratePercent=partner?(Number(amount)<5000?Number(organizer.partner_rate_under_5000??1):Number(organizer.partner_rate_from_5000??3)):(Number(amount)<5000?2:5);
+  const rate=ratePercent/100;
+  const admin=Math.round(Number(amount||0)*rate);
+  return {rate:ratePercent,admin,organizer:Number(amount||0)-admin};
+}
 const TCHIN_CUSTOMER_FEE_RATE=0.05;
 function customerFeeFor(amount){return Math.round(Number(amount||0)*TCHIN_CUSTOMER_FEE_RATE);}
 function customerTotalFor(amount){const base=Number(amount||0);return base+customerFeeFor(base);}
@@ -602,16 +608,21 @@ app.post('/api/organizers/request',asyncRoute(async(req,res)=>{
 
 app.post('/api/organizers/login',authRateLimit,asyncRoute(async(req,res)=>{
   const email=clean(req.body.email,255).toLowerCase(),password=String(req.body.password||'');
-  const r=await pool.query('SELECT id,nom,prenom,email,phone,status,password_hash FROM organizers WHERE email=$1',[email]);
+  const r=await pool.query('SELECT id,nom,prenom,email,phone,status,password_hash,is_partner,partner_since,partner_rate_under_5000,partner_rate_from_5000 FROM organizers WHERE email=$1',[email]);
   if(!r.rows.length)return res.status(401).json({success:false,message:'Identifiants incorrects.'});
   const o=r.rows[0];
   if(o.status!=='VALIDE')return res.status(403).json({success:false,message:o.status==='EN_ATTENTE'?'Votre demande est encore en attente de validation.':'Votre accès organisateur n’est pas actif.'});
   if(!(await bcrypt.compare(password,o.password_hash)))return res.status(401).json({success:false,message:'Identifiants incorrects.'});
   req.session.user={role:'ORGANIZER',id:o.id,email:o.email,name:o.nom};
-  res.json({success:true,organizer:{id:o.id,nom:o.nom,prenom:o.prenom,email:o.email,phone:o.phone}});
+  res.json({success:true,organizer:{id:o.id,nom:o.nom,prenom:o.prenom,email:o.email,phone:o.phone,is_partner:Boolean(o.is_partner),partner_since:o.partner_since,partner_rate_under_5000:Number(o.partner_rate_under_5000??1),partner_rate_from_5000:Number(o.partner_rate_from_5000??3)}});
 }));
 app.post('/api/organizers/logout',(req,res)=>req.session.destroy(()=>res.json({success:true})));
-app.get('/api/organizers/me',requireOrg,asyncRoute(async(req,res)=>{const r=await pool.query('SELECT id,nom,prenom,email,phone,status FROM organizers WHERE id=$1',[req.session.user.id]);if(!r.rows.length)return res.status(401).json({success:false});res.json({success:true,organizer:r.rows[0]});}));
+app.get('/api/organizers/me',requireOrg,asyncRoute(async(req,res)=>{
+  const r=await pool.query('SELECT id,nom,prenom,email,phone,status,is_partner,partner_since,partner_rate_under_5000,partner_rate_from_5000 FROM organizers WHERE id=$1',[req.session.user.id]);
+  if(!r.rows.length)return res.status(401).json({success:false});
+  const o=r.rows[0];o.is_partner=Boolean(o.is_partner);o.partner_rate_under_5000=Number(o.partner_rate_under_5000??1);o.partner_rate_from_5000=Number(o.partner_rate_from_5000??3);
+  res.json({success:true,organizer:o});
+}));
 app.post('/api/organizers/password',requireOrg,asyncRoute(async(req,res)=>{const oldP=String(req.body.oldPassword||''),newP=String(req.body.newPassword||'');if(newP.length<8)return res.status(400).json({success:false,message:'Le nouveau mot de passe doit contenir au moins 8 caractères.'});const r=await pool.query('SELECT password_hash FROM organizers WHERE id=$1',[req.session.user.id]);if(!r.rows.length||!(await bcrypt.compare(oldP,r.rows[0].password_hash)))return res.status(401).json({success:false,message:'Ancien mot de passe incorrect.'});const hash=await bcrypt.hash(newP,12);await pool.query('UPDATE organizers SET password_hash=$1,updated_at=NOW() WHERE id=$2',[hash,req.session.user.id]);res.json({success:true,message:'Mot de passe modifié avec succès.'});}));
 
 // ---------- EVENEMENTS ----------
@@ -677,6 +688,23 @@ app.get('/api/admin/organizers',requireAdmin,asyncRoute(async(req,res)=>{
 app.post('/api/admin/organizers/:id/approve',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query("UPDATE organizers SET status='VALIDE',updated_at=NOW() WHERE id=$1 RETURNING id,status",[req.params.id]);if(!r.rows.length)return res.status(404).json({success:false});res.json({success:true,organizer:r.rows[0]});}));
 app.post('/api/admin/organizers/:id/reject',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query("UPDATE organizers SET status='REFUSE',updated_at=NOW() WHERE id=$1 RETURNING id,status",[req.params.id]);if(!r.rows.length)return res.status(404).json({success:false});res.json({success:true});}));
 app.delete('/api/admin/organizers/:id',requireAdmin,asyncRoute(async(req,res)=>{await pool.query('DELETE FROM organizers WHERE id=$1',[req.params.id]);res.json({success:true});}));
+app.get('/api/admin/organizer-partners',requireAdmin,asyncRoute(async(req,res)=>{
+  const r=await pool.query(`SELECT o.id,o.nom,o.prenom,o.email,o.phone,o.status,o.is_partner,o.partner_since,o.partner_rate_under_5000,o.partner_rate_from_5000,COUNT(DISTINCT e.id)::int AS event_count,COUNT(DISTINCT t.id)::int AS tickets_sold FROM organizers o LEFT JOIN events e ON e.org_id=o.id LEFT JOIN tickets t ON t.org_id=o.id GROUP BY o.id ORDER BY o.is_partner DESC,o.created_at DESC`);
+  res.json({success:true,organizers:r.rows.map(o=>({...o,is_partner:Boolean(o.is_partner),partner_rate_under_5000:Number(o.partner_rate_under_5000??1),partner_rate_from_5000:Number(o.partner_rate_from_5000??3)}))});
+}));
+app.patch('/api/admin/organizer-partners/:id',requireAdmin,asyncRoute(async(req,res)=>{
+  const id=Number(req.params.id),activate=Boolean(req.body.isPartner),under=Number(req.body.partnerRateUnder5000??1),from=Number(req.body.partnerRateFrom5000??3);
+  if(!Number.isInteger(id)||id<1)return res.status(400).json({success:false,message:'Organisateur invalide.'});
+  if(!Number.isFinite(under)||!Number.isFinite(from)||under<0||under>100||from<0||from>100)return res.status(400).json({success:false,message:'Les taux doivent être compris entre 0 et 100 %.'});
+  const existing=await pool.query('SELECT id,status FROM organizers WHERE id=$1',[id]);
+  if(!existing.rows.length)return res.status(404).json({success:false,message:'Organisateur introuvable.'});
+  if(activate&&existing.rows[0].status!=='VALIDE')return res.status(400).json({success:false,message:'Seul un organisateur validé peut devenir partenaire.'});
+  const r=await pool.query(`UPDATE organizers SET is_partner=$1,partner_since=CASE WHEN $1=true AND COALESCE(is_partner,false)=false THEN NOW() WHEN $1=true THEN partner_since ELSE NULL END,partner_rate_under_5000=$2,partner_rate_from_5000=$3,updated_at=NOW() WHERE id=$4 RETURNING id,nom,prenom,email,phone,status,is_partner,partner_since,partner_rate_under_5000,partner_rate_from_5000`,[activate,under,from,id]);
+  await logAction(pool,'ADMIN',req.session.user?.email||'admin',activate?'ORGANIZER_PARTNER_ACTIVATED':'ORGANIZER_PARTNER_DEACTIVATED','organizer',id,{partner_rate_under_5000:under,partner_rate_from_5000:from});
+  const o=r.rows[0];o.is_partner=Boolean(o.is_partner);o.partner_rate_under_5000=Number(o.partner_rate_under_5000??1);o.partner_rate_from_5000=Number(o.partner_rate_from_5000??3);
+  res.json({success:true,organizer:o,message:activate?'Organisateur partenaire activé.':'Partenariat désactivé.'});
+}));
+
 app.get('/api/admin/events',requireAdmin,asyncRoute(async(req,res)=>{const r=await pool.query(`SELECT e.*,o.nom AS organizer_name,COALESCE((SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id AND t.issued_by_admin=false),0)::int sold_count,COALESCE((SELECT COUNT(*) FROM event_likes l WHERE l.event_id=e.id),0)::int like_count FROM events e LEFT JOIN organizers o ON o.id=e.org_id ORDER BY e.id DESC`);res.json({success:true,events:r.rows});}));
 app.post('/api/admin/events',requireAdmin,asyncRoute(async(req,res)=>{
   const {title,category,date,price,capacity,imageUrl}=req.body;const p=positiveInt(price),cap=positiveInt(capacity);
@@ -750,13 +778,13 @@ app.post('/api/payments/create',asyncRoute(async(req,res)=>{
 }));
 async function fulfillOrder(orderId,sourceData={}){
   const c=await pool.connect();try{await c.query('BEGIN');
-    const or=await c.query('SELECT o.*,e.title event_title,e.date event_date,e.location event_location,e.org_id,e.capacity,e.ticket_categories FROM orders o JOIN events e ON e.id=o.event_id WHERE o.id=$1 FOR UPDATE',[orderId]);if(!or.rows.length)throw new Error('Commande introuvable.');const o=or.rows[0];
+    const or=await c.query('SELECT o.*,e.title event_title,e.date event_date,e.location event_location,e.org_id,e.capacity,e.ticket_categories,org.is_partner,org.partner_rate_under_5000,org.partner_rate_from_5000 FROM orders o JOIN events e ON e.id=o.event_id LEFT JOIN organizers org ON org.id=e.org_id WHERE o.id=$1 FOR UPDATE',[orderId]);if(!or.rows.length)throw new Error('Commande introuvable.');const o=or.rows[0];
     if(o.status==='PAID'){const tr=await c.query('SELECT * FROM tickets WHERE order_id=$1 ORDER BY id',[orderId]);await c.query('COMMIT');return tr.rows;}
     const expected=Number(o.total_amount),grossExpected=customerTotalFor(expected),received=Number(sourceData.amount??expected);if(received!==expected&&received!==grossExpected)throw new Error('Montant de paiement différent du montant attendu.');if(sourceData.mode&&sourceData.mode!==(process.env.TCHIN_ENV||'test'))throw new Error('Mode de paiement non conforme.');if((process.env.TCHIN_ENV||'test')==='test')throw new Error('Paiement de test : aucun billet réel ne doit être délivré.');
     let cats=Array.isArray(o.ticket_categories)?o.ticket_categories:[];if(typeof o.ticket_categories==='string')cats=JSON.parse(o.ticket_categories);const cat=cats.find(x=>String(x.name).toLowerCase()===String(o.ticket_type).toLowerCase());const quantity=Math.max(1,Number(o.quantity||1));const maxPerOrder=Math.max(1,Number(cat?.max_per_order||10));if(quantity>maxPerOrder)throw new Error('Limite de billets par commande dépassée.');
     const soldCat=await c.query(`SELECT COUNT(*)::int n FROM tickets WHERE event_id=$1 AND LOWER(ticket_type)=LOWER($2)`,[o.event_id,o.ticket_type]);if(cat?.total_stock>0&&Number(soldCat.rows[0].n)+quantity>Number(cat.total_stock))throw new Error('Stock insuffisant au moment de la confirmation.');const sold=await c.query('SELECT COUNT(*)::int n FROM tickets WHERE event_id=$1',[o.event_id]);if(Number(o.capacity)>0&&Number(sold.rows[0].n)+quantity>Number(o.capacity))throw new Error('Événement complet au moment de la confirmation.');
     const perBase=Math.floor(Number(o.base_amount||0)/quantity);const splitTotal=Number(o.total_amount||0);const tickets=[];let allocated=0;
-    for(let i=0;i<quantity;i++){let code=null;for(let j=0;j<10;j++){const candidate=fmtTicket();if(!(await c.query('SELECT 1 FROM tickets WHERE code=$1',[candidate])).rows.length){code=candidate;break;}}if(!code)throw new Error('Impossible de générer une référence billet unique.');const ticketAmount=i===quantity-1?splitTotal-allocated:perBase;allocated+=ticketAmount;const split=commissionFor(ticketAmount);const tr=await c.query(`INSERT INTO tickets(order_id,code,event_id,org_id,event_title,event_date,event_location,ticket_type,customer_name,customer_email,customer_phone,total_amount,admin_commission,organizer_amount,commission_rate) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,[o.id,code,o.event_id,o.org_id,o.event_title,o.event_date,o.event_location,o.ticket_type,o.customer_name,o.customer_email,o.customer_phone||'',ticketAmount,split.admin,split.organizer,split.rate]);tickets.push(tr.rows[0]);}
+    for(let i=0;i<quantity;i++){let code=null;for(let j=0;j<10;j++){const candidate=fmtTicket();if(!(await c.query('SELECT 1 FROM tickets WHERE code=$1',[candidate])).rows.length){code=candidate;break;}}if(!code)throw new Error('Impossible de générer une référence billet unique.');const ticketAmount=i===quantity-1?splitTotal-allocated:perBase;allocated+=ticketAmount;const split=commissionFor(ticketAmount,o);const tr=await c.query(`INSERT INTO tickets(order_id,code,event_id,org_id,event_title,event_date,event_location,ticket_type,customer_name,customer_email,customer_phone,total_amount,admin_commission,organizer_amount,commission_rate) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,[o.id,code,o.event_id,o.org_id,o.event_title,o.event_date,o.event_location,o.ticket_type,o.customer_name,o.customer_email,o.customer_phone||'',ticketAmount,split.admin,split.organizer,split.rate]);tickets.push(tr.rows[0]);}
     await c.query("UPDATE orders SET status='PAID',paid_at=NOW(),tchin_status='completed',tchin_reference=COALESCE($1,tchin_reference),tchin_mode=COALESCE($2,tchin_mode) WHERE id=$3",[sourceData.reference||null,sourceData.mode||null,o.id]);await c.query("UPDATE promo_usages SET status='USED',used_at=NOW() WHERE order_id=$1 AND status='RESERVED'",[o.id]);await logAction(c,'SYSTEM','TCHIN','TICKETS_ISSUED','order',o.id,{order_id:o.id,reference:o.reference,quantity});await c.query('COMMIT');return tickets;
   }catch(e){try{await c.query('ROLLBACK')}catch{};throw e}finally{c.release();}}
 
@@ -909,7 +937,7 @@ async function syncPendingTchinPayouts(){
 // ---------- STATS / PAYOUTS ----------
 app.get('/api/organizers/stats',requireOrg,asyncRoute(async(req,res)=>{
   const id=req.session.user.id;
-  const [e,t,p,daily,top]=await Promise.all([
+  const [e,t,p,daily,top,partner]=await Promise.all([
     pool.query('SELECT * FROM events WHERE org_id=$1 ORDER BY id DESC',[id]),
     pool.query('SELECT * FROM tickets WHERE org_id=$1 AND issued_by_admin=false ORDER BY id DESC',[id]),
     pool.query('SELECT * FROM payouts WHERE org_id=$1 ORDER BY id DESC',[id]),
@@ -918,13 +946,15 @@ app.get('/api/organizers/stats',requireOrg,asyncRoute(async(req,res)=>{
       LEFT JOIN tickets t ON t.org_id=$1 AND t.issued_by_admin=false AND t.created_at::date=gs::date
       GROUP BY gs::date ORDER BY day`,[id]),
     pool.query(`SELECT e.id,e.title,COUNT(t.id)::int tickets,COALESCE(SUM(t.organizer_amount),0)::int revenue,COUNT(t.id) FILTER (WHERE t.used)::int used
-      FROM events e LEFT JOIN tickets t ON t.event_id=e.id AND t.issued_by_admin=false WHERE e.org_id=$1 GROUP BY e.id,e.title ORDER BY tickets DESC,revenue DESC LIMIT 8`,[id])
+      FROM events e LEFT JOIN tickets t ON t.event_id=e.id AND t.issued_by_admin=false WHERE e.org_id=$1 GROUP BY e.id,e.title ORDER BY tickets DESC,revenue DESC LIMIT 8`,[id]),
+    pool.query('SELECT is_partner,partner_since,partner_rate_under_5000,partner_rate_from_5000 FROM organizers WHERE id=$1',[id])
   ]);
   const net=t.rows.reduce((s,x)=>s+Number(x.organizer_amount||0),0);
   const pending=p.rows.filter(x=>x.status==='EN_ATTENTE').reduce((s,x)=>s+Number(x.amount||0),0);
   const reserved=p.rows.filter(x=>['EN_ATTENTE','VALIDE','PAYE'].includes(x.status)).reduce((s,x)=>s+Number(x.amount||0),0);
   const used=t.rows.filter(x=>x.used).length;
-  res.json({success:true,events:e.rows,tickets:t.rows,payouts:p.rows,netRevenue:net,availableBalance:Math.max(0,net-reserved),pendingPayout:pending,usedTickets:used,attendanceRate:t.rows.length?Math.round(used/t.rows.length*100):0,daily:daily.rows.map(x=>({day:x.day,tickets:Number(x.tickets),revenue:Number(x.revenue),used:Number(x.used)})),topEvents:top.rows.map(x=>({...x,tickets:Number(x.tickets),revenue:Number(x.revenue),used:Number(x.used)}))});
+  const partnerInfo=partner.rows[0]||{is_partner:false,partner_since:null,partner_rate_under_5000:1,partner_rate_from_5000:3};
+  res.json({success:true,events:e.rows,tickets:t.rows,payouts:p.rows,netRevenue:net,partner:{is_partner:Boolean(partnerInfo.is_partner),partner_since:partnerInfo.partner_since,partner_rate_under_5000:Number(partnerInfo.partner_rate_under_5000??1),partner_rate_from_5000:Number(partnerInfo.partner_rate_from_5000??3)},availableBalance:Math.max(0,net-reserved),pendingPayout:pending,usedTickets:used,attendanceRate:t.rows.length?Math.round(used/t.rows.length*100):0,daily:daily.rows.map(x=>({day:x.day,tickets:Number(x.tickets),revenue:Number(x.revenue),used:Number(x.used)})),topEvents:top.rows.map(x=>({...x,tickets:Number(x.tickets),revenue:Number(x.revenue),used:Number(x.used)}))});
 }));
 app.delete('/api/organizers/events/:id',requireOrg,asyncRoute(async(req,res)=>{const sold=await pool.query('SELECT COUNT(*)::int AS n FROM tickets WHERE event_id=$1',[req.params.id]);const orders=await pool.query('SELECT COUNT(*)::int AS n FROM orders WHERE event_id=$1',[req.params.id]);if(Number(sold.rows[0].n)>0||Number(orders.rows[0].n)>0)return res.status(400).json({success:false,message:'Impossible de supprimer cet événement : des achats ou billets sont déjà liés à cet événement.'});const r=await pool.query('DELETE FROM events WHERE id=$1 AND org_id=$2 RETURNING id',[req.params.id,req.session.user.id]);if(!r.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});res.json({success:true});}));
 app.post('/api/payouts',requireOrg,asyncRoute(async(req,res)=>{
