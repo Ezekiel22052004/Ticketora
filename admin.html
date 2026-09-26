@@ -111,7 +111,7 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
         <button onclick="switchTab('overview')" id="nav-overview" class="nav-btn ticketora-nav active"><i class="fa-solid fa-house text-[12px]"></i><span>Dashboard</span></button>
         <div class="ticketora-section-title mt-5">GESTION</div>
         <button onclick="switchTab('events')" id="nav-events" class="nav-btn ticketora-nav"><i class="fa-regular fa-calendar text-[13px]"></i><span>Événements</span></button>
-        <button onclick="switchTab('tickets')" id="nav-tickets" class="nav-btn ticketora-nav"><i class="fa-solid fa-ticket text-[12px]"></i><span>Billets</span></button>
+        <button onclick="switchTab('tickets')" id="nav-tickets" class="nav-btn ticketora-nav"><i class="fa-solid fa-ticket text-[12px]"></i><span>Tickets</span></button>
         <button onclick="switchTab('users')" id="nav-users" class="nav-btn ticketora-nav"><i class="fa-solid fa-user text-[12px]"></i><span>Utilisateurs</span></button>
         <button onclick="switchTab('organizers')" id="nav-organizers" class="nav-btn ticketora-nav"><i class="fa-solid fa-user-tie text-[12px]"></i><span>Organisateurs</span></button>
         <button onclick="switchTab('organizers')" class="ticketora-nav"><i class="fa-regular fa-rectangle-list text-[12px]"></i><span>Demandes d'accès</span></button>
@@ -283,7 +283,52 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
             </section>
 
 
-            <section id="tab-tickets" class="tab-content hidden space-y-6"><div class="flex flex-col md:flex-row md:items-center justify-between gap-3"><div><h1 class="text-2xl font-extrabold">Billets</h1><p class="text-sm text-[#7892b5]">Tous les billets issus de paiements confirmés.</p></div><button id="admin-download-all-tickets" onclick="downloadAllAdminTickets()" class="bg-[#ff8a00] text-white font-bold px-5 py-3 rounded-xl">📦 Télécharger tous les billets</button></div><div class="ticketora-panel p-0 overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-[#243b5d] text-[10px] uppercase text-[#7892b5]"><th class="p-4">Code</th><th class="p-4">Client</th><th class="p-4">Téléphone</th><th class="p-4">Événement</th><th class="p-4">Type</th><th class="p-4">Montant</th><th class="p-4">État</th><th class="p-4 text-right">Télécharger</th></tr></thead><tbody id="admin-tickets-list"></tbody></table></div></section>
+            <section id="tab-tickets" class="tab-content hidden space-y-6">
+  <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+    <div><h1 class="text-2xl font-extrabold">Tickets</h1><p class="text-sm text-[#7892b5]">Gestion des billets et génération privée réservée à l’administration.</p></div>
+    <button id="admin-download-all-tickets" onclick="downloadAllAdminTickets()" class="bg-[#ff8a00] text-white font-bold px-5 py-3 rounded-xl">📦 Télécharger tous les billets</button>
+  </div>
+
+  <div class="ticketora-panel p-5">
+    <div class="flex items-center gap-3 mb-5"><div class="w-11 h-11 rounded-xl bg-[#ff8a00]/10 text-[#ff9a1f] flex items-center justify-center"><i class="fa-solid fa-shield-halved"></i></div><div><h2 class="font-extrabold text-lg">Tickets privés Administration</h2><p class="text-xs text-[#7892b5]">Cette partie est privée. Les tickets générés ici ne sont pas comptabilisés dans les rapports de l’organisateur.</p></div></div>
+
+    <div id="admin-private-ticket-auth" class="max-w-xl">
+      <form onsubmit="authenticateAdminPrivateTickets(event)" class="space-y-4">
+        <div class="grid md:grid-cols-2 gap-3">
+          <div><label class="block text-[10px] font-bold uppercase text-[#7892b5] mb-1">Identifiant administrateur</label><input id="admin-private-email" type="email" required autocomplete="username" class="w-full bg-[#081a37] border border-[#29405f] text-white rounded-xl p-3 text-sm" placeholder="Email administrateur"></div>
+          <div><label class="block text-[10px] font-bold uppercase text-[#7892b5] mb-1">Mot de passe</label><input id="admin-private-password" type="password" required autocomplete="current-password" class="w-full bg-[#081a37] border border-[#29405f] text-white rounded-xl p-3 text-sm" placeholder="Mot de passe"></div>
+        </div>
+        <div id="admin-private-auth-message" class="hidden text-xs p-3 rounded-xl font-semibold"></div>
+        <button class="bg-[#ff8a00] text-white font-bold px-5 py-3 rounded-xl">Se reconnecter et continuer</button>
+      </form>
+    </div>
+
+    <div id="admin-private-ticket-form-box" class="hidden">
+      <form onsubmit="generateAdminPrivateTicket(event)" class="space-y-5">
+        <div class="grid md:grid-cols-2 gap-4">
+          <div><label class="block text-[10px] font-bold uppercase text-[#7892b5] mb-1">Événement</label><select id="admin-private-event" onchange="populateAdminPrivateTicketTypes()" required class="w-full bg-[#081a37] border border-[#29405f] text-white rounded-xl p-3 text-sm"></select></div>
+          <div><label class="block text-[10px] font-bold uppercase text-[#7892b5] mb-1">Type de ticket</label><select id="admin-private-ticket-type" required class="w-full bg-[#081a37] border border-[#29405f] text-white rounded-xl p-3 text-sm"></select></div>
+        </div>
+        <div class="grid md:grid-cols-3 gap-4">
+          <div><label class="block text-[10px] font-bold uppercase text-[#7892b5] mb-1">Nom du participant</label><input id="admin-private-name" required class="w-full bg-[#081a37] border border-[#29405f] text-white rounded-xl p-3 text-sm" placeholder="Nom complet"></div>
+          <div><label class="block text-[10px] font-bold uppercase text-[#7892b5] mb-1">Email (facultatif)</label><input id="admin-private-email-participant" type="email" class="w-full bg-[#081a37] border border-[#29405f] text-white rounded-xl p-3 text-sm" placeholder="Email"></div>
+          <div><label class="block text-[10px] font-bold uppercase text-[#7892b5] mb-1">Téléphone (facultatif)</label><input id="admin-private-phone" class="w-full bg-[#081a37] border border-[#29405f] text-white rounded-xl p-3 text-sm" placeholder="Téléphone"></div>
+        </div>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div><label class="block text-[10px] font-bold uppercase text-[#7892b5] mb-1">Heure de l’événement</label><input id="admin-private-event-time" type="time" class="w-full bg-[#081a37] border border-[#29405f] text-white rounded-xl p-3 text-sm"></div>
+          <div class="flex items-end"><p class="text-[11px] text-[#7892b5] pb-2">Pour VIP/VVIP, l’organisateur est récupéré automatiquement depuis l’événement. Pour VVIP, le texte VVIP de la template reste intact.</p></div>
+        </div>
+        <div id="admin-private-generate-message" class="hidden text-xs p-3 rounded-xl font-semibold"></div>
+        <button class="bg-[#ff8a00] text-white font-bold px-6 py-3 rounded-xl">Générer le ticket sans paiement</button>
+      </form>
+      <div id="admin-private-last-ticket" class="hidden mt-5 rounded-xl border border-[#29405f] p-4"></div>
+    </div>
+  </div>
+
+  <div class="ticketora-panel p-0 overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-[#243b5d] text-[10px] uppercase text-[#7892b5]"><th class="p-4">Code</th><th class="p-4">Client</th><th class="p-4">Téléphone</th><th class="p-4">Événement</th><th class="p-4">Type</th><th class="p-4">Montant</th><th class="p-4">État</th><th class="p-4 text-right">Télécharger</th></tr></thead><tbody id="admin-tickets-list"></tbody></table></div>
+
+  <div class="ticketora-panel p-0 overflow-x-auto"><div class="p-5"><h2 class="font-extrabold text-lg">Tickets privés déjà générés</h2><p class="text-xs text-[#7892b5] mt-1">Historique accessible uniquement à l’administration.</p></div><table class="w-full text-left text-sm"><thead><tr class="border-b border-[#243b5d] text-[10px] uppercase text-[#7892b5]"><th class="p-4">N°</th><th class="p-4">Code</th><th class="p-4">Participant</th><th class="p-4">Événement</th><th class="p-4">Type</th><th class="p-4 text-right">Action</th></tr></thead><tbody id="admin-private-tickets-list"></tbody></table></div>
+</section>
             <section id="tab-users" class="tab-content hidden space-y-6">
               <div><h1 class="text-2xl font-extrabold">Utilisateurs</h1><p class="text-sm text-slate-500">Clients ayant acheté des billets.</p></div>
               <div class="ticketora-panel p-0 overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-[#243b5d] text-[10px] uppercase text-[#7892b5]"><th class="p-4">Nom</th><th class="p-4">Email</th><th class="p-4">Billets</th><th class="p-4">Dernier achat</th></tr></thead><tbody id="admin-users-list"></tbody></table></div>
@@ -474,6 +519,10 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">Date</label>
                         <input type="date" id="form-event-date" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Heure</label>
+                        <input type="time" id="form-event-time" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:outline-none">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">Capacité Max</label>

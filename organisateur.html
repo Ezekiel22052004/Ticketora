@@ -173,6 +173,7 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
                             <div class="grid grid-cols-2 gap-4">
                                 <select id="event-type" onchange="toggleFreeEventMode()" class="bg-slate-50 border rounded-xl p-3 text-sm"><option value="PAID">Événement payant</option><option value="FREE">Événement gratuit</option></select> <label class="block text-xs font-bold text-slate-500 uppercase mt-3">Maximum de billets par commande</label><input id="event-max-order" type="number" min="1" max="50" value="10" class="w-full bg-white border rounded-xl p-2.5 text-sm" />
                                 <input type="date" id="event-date" required class="bg-slate-50 border rounded-xl p-3 text-sm">
+                                <input type="time" id="event-time" class="bg-slate-50 border rounded-xl p-3 text-sm" placeholder="Heure">
                                 <input type="text" id="event-location" required placeholder="Lieu (résumé)" class="bg-slate-50 border rounded-xl p-3 text-sm">
                             </div>
                             <div class="grid md:grid-cols-3 gap-4">

@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS events (
   title VARCHAR(255) NOT NULL,
   category VARCHAR(100) NOT NULL DEFAULT 'Concert',
   date DATE NOT NULL,
+  event_time TIME,
   location VARCHAR(255) NOT NULL DEFAULT '',
   venue_name VARCHAR(255) NOT NULL DEFAULT '',
   city VARCHAR(120) NOT NULL DEFAULT '',
@@ -67,6 +68,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   event_title VARCHAR(255) NOT NULL,
   event_date DATE NOT NULL,
   event_location VARCHAR(255) NOT NULL,
+  event_time TIME,
   ticket_type VARCHAR(120) NOT NULL,
   customer_name VARCHAR(255) NOT NULL,
   customer_email VARCHAR(255) NOT NULL,
@@ -75,6 +77,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   admin_commission INTEGER NOT NULL,
   organizer_amount INTEGER NOT NULL,
   commission_rate NUMERIC(5,2) NOT NULL,
+  admin_private BOOLEAN NOT NULL DEFAULT FALSE,
   used BOOLEAN NOT NULL DEFAULT FALSE,
   used_at TIMESTAMPTZ,
   scan_count INTEGER NOT NULL DEFAULT 0,
@@ -268,6 +271,9 @@ CREATE TABLE IF NOT EXISTS event_partners (
   sort_order INTEGER NOT NULL DEFAULT 0
 );
 
+ALTER TABLE events ADD COLUMN IF NOT EXISTS event_time TIME;
+
+
 -- V7 location migration (safe on existing Ticketora databases)
 ALTER TABLE events ADD COLUMN IF NOT EXISTS venue_name VARCHAR(255) NOT NULL DEFAULT '';
 ALTER TABLE events ADD COLUMN IF NOT EXISTS city VARCHAR(120) NOT NULL DEFAULT '';
@@ -297,6 +303,7 @@ ALTER TABLE tickets ADD COLUMN IF NOT EXISTS source VARCHAR(30) NOT NULL DEFAULT
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS generated_by_org_id BIGINT REFERENCES organizers(id) ON DELETE SET NULL;
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ;
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_number VARCHAR(40);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS event_time TIME;
 CREATE SEQUENCE IF NOT EXISTS ticketora_generated_ticket_number_seq START 1;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_ticket_number ON tickets(ticket_number) WHERE ticket_number IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_tickets_source_event ON tickets(event_id,source);
@@ -329,3 +336,7 @@ CREATE TABLE IF NOT EXISTS admin_credentials (
   password_hash TEXT NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- TICKETORA: billets privés générés par l'administration
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS admin_private BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_tickets_admin_private ON tickets(issued_by_admin,admin_private,event_id);
