@@ -1122,7 +1122,7 @@ async function syncTchinPayout(payout){
       return r.rows[0]||payout;
     }
     if(['failed','cancelled','canceled','error','rejected'].includes(status)){
-      const msg=td.message||td.data?.message||'Le décaissement Tchin a échoué.';
+      const msg=`Retrait non effectué : ${td.message||td.data?.message||'le décaissement Tchin a échoué'}. Le montant a été remis dans votre solde.`;
       const r=await pool.query(
         `UPDATE payouts SET status='REFUSE',tchin_status=$1,tchin_error=$2,tchin_updated_at=NOW() WHERE id=$3 RETURNING *`,
         [status,msg,payout.id]
@@ -1143,6 +1143,13 @@ async function syncPendingTchinPayouts(){
   try{
     const r=await pool.query("SELECT * FROM payouts WHERE status='VALIDE' AND tchin_disburse_token IS NOT NULL ORDER BY id ASC LIMIT 25");
     for(const payout of r.rows) await syncTchinPayout(payout);
+    // Validated withdrawals never sent to Tchin (validated before auto-payment existed): send them now, once.
+    const unsent=await pool.query("SELECT * FROM payouts WHERE status='VALIDE' AND tchin_disburse_token IS NULL AND withdraw_mode IS NOT NULL AND COALESCE(tchin_status,'pending')='pending' ORDER BY id ASC LIMIT 5");
+    for(const po of unsent.rows){
+      if(Number(po.amount)>await payoutAvailable(po.org_id,po.id)){console.error('[PAYOUT] solde organisateur insuffisant, retrait non envoyé',po.id);continue;}
+      const out=await sendTchinPayout(po);
+      console.log('[PAYOUT] envoi automatique du retrait',po.id,'->',out.http,out.body?.message||'');
+    }
   }catch(e){console.error('Tchin pending payouts:',e.message);}
 }
 
@@ -1187,6 +1194,70 @@ app.get('/api/admin/payouts',requireAdmin,asyncRoute(async(req,res)=>{
   const bal=await pool.query(`SELECT COALESCE(SUM(organizer_amount),0) AS total FROM tickets`);
   res.json({success:true,payouts:r.rows,totalOrganizerRevenue:Number(bal.rows[0].total||0)});
 }));
+async function sendTchinPayout(payout){
+  if(!process.env.TCHIN_PUBLIC_KEY||!process.env.TCHIN_PRIVATE_KEY)return {http:503,body:{success:false,message:'Tchin n’est pas configuré sur le serveur.'}};
+  if(!payout.withdraw_mode)return {http:400,body:{success:false,message:'Opérateur Tchin manquant sur cette demande de retrait.'}};
+  if(payout.tchin_disburse_token)return {http:409,body:{success:false,message:'Un décaissement Tchin existe déjà pour cette demande. Vérifiez son statut.'}};
+
+  // Atomic claim: prevents two simultaneous sends of the same withdrawal (button click + automatic retry).
+  const claim=await pool.query(`UPDATE payouts SET tchin_status='initiating',tchin_updated_at=NOW() WHERE id=$1 AND tchin_disburse_token IS NULL AND status IN ('VALIDE','EN_ATTENTE') AND (COALESCE(tchin_status,'')<>'initiating' OR tchin_updated_at<NOW()-INTERVAL '5 minutes') RETURNING id`,[payout.id]);
+  if(!claim.rows.length)return {http:409,body:{success:false,message:'Un décaissement est déjà en cours pour cette demande.'}};
+
+  let init;
+  try{
+    init=await tchinRequest('/disburse/initiate',{
+      method:'POST',
+      body:JSON.stringify({
+        account_alias:payout.account,
+        amount:Number(payout.amount),
+        withdraw_mode:payout.withdraw_mode
+      })
+    });
+    if(!init.success||!init.disburse_token)throw new Error(init.message||'Tchin n’a pas préparé le décaissement.');
+  }catch(e){
+    // Nothing was sent to the mobile money account: cancel the withdrawal (REFUSE) so the amount
+    // is automatically available again in the organizer balance, with the reason visible on the request.
+    const reason=`Retrait non effectué : ${e.message}. Le montant a été remis dans votre solde.`;
+    const failed=await pool.query(`UPDATE payouts SET status='REFUSE',processed_at=NULL,tchin_status='failed',tchin_error=$1,tchin_updated_at=NOW() WHERE id=$2 RETURNING *`,[reason,payout.id]);
+    await logAction(pool,'SYSTEM','TCHIN','PAYOUT_ECHEC_REMBOURSE','payout',payout.id,{organizer_id:payout.org_id,amount:payout.amount,error:e.message});
+    return {http:400,body:{success:false,payout:failed.rows[0],message:`Tchin : ${e.message}. Le retrait a été annulé et le montant remis dans le solde de l’organisateur.`}};
+  }
+
+  await pool.query(`UPDATE payouts SET tchin_disburse_token=$1,tchin_fee=$2,tchin_debited=$3,tchin_status='initiated',tchin_error=NULL,tchin_updated_at=NOW(),status='VALIDE' WHERE id=$4`,
+    [init.disburse_token,Number(init.fee||0),Number(init.debited||0),payout.id]);
+
+  let submit;
+  try{
+    submit=await tchinRequest('/disburse/submit',{
+      method:'POST',
+      body:JSON.stringify({disburse_token:init.disburse_token})
+    });
+  }catch(e){
+    await pool.query(`UPDATE payouts SET tchin_status='failed',tchin_error=$1,tchin_updated_at=NOW() WHERE id=$2`,[e.message,payout.id]);
+    // The outcome may be uncertain (network error): only Tchin's real status decides. If Tchin reports a failure, the withdrawal is cancelled and refunded.
+    const checked=await syncTchinPayout({...payout,tchin_disburse_token:init.disburse_token});
+    const refunded=checked&&checked.status==='REFUSE';
+    return {http:400,body:{success:false,payout:checked,message:refunded?`Tchin : ${e.message}. Le retrait a été annulé et le montant remis dans le solde de l’organisateur.`:`Tchin : ${e.message}. Le statut réel sera vérifié automatiquement.`}};
+  }
+
+  const submitStatus=String(submit.status||'').toLowerCase();
+  if(['success','completed','successful'].includes(submitStatus)){
+    const updated=await pool.query(`UPDATE payouts SET status='PAYE',tchin_status='success',tchin_transaction_id=$1,tchin_error=NULL,tchin_updated_at=NOW(),processed_at=NOW() WHERE id=$2 RETURNING *`,
+      [submit.transaction_id||submit.data?.transaction_id||null,payout.id]);
+    await logAction(pool,'ADMIN','ADMIN','PAYOUT_PAYE_TCHIN','payout',payout.id,{organizer_id:payout.org_id,amount:payout.amount,tchin_transaction_id:submit.transaction_id||null});
+    return {http:200,body:{success:true,payout:updated.rows[0],message:'Retrait envoyé avec succès via Tchin.'}};
+  }
+
+  // pending: ne jamais resoumettre. Le prochain rafraîchissement vérifie le statut.
+  const updated=await pool.query(`UPDATE payouts SET tchin_status='pending',tchin_error=$1,tchin_updated_at=NOW() WHERE id=$2 RETURNING *`,
+    [submit.message||'Décaissement Tchin en cours.',payout.id]);
+  await logAction(pool,'ADMIN','ADMIN','PAYOUT_TCHIN_PENDING','payout',payout.id,{organizer_id:payout.org_id,amount:payout.amount});
+  return {http:200,body:{success:true,payout:updated.rows[0],message:'Décaissement Tchin en cours. Ticketora ne renverra pas la demande.'}};
+}
+async function payoutAvailable(orgId,payoutId){
+  const bal=await pool.query(`SELECT COALESCE((SELECT SUM(organizer_amount) FROM tickets WHERE org_id=$1),0)-COALESCE((SELECT SUM(amount) FROM payouts WHERE org_id=$1 AND id<>$2 AND status IN ('EN_ATTENTE','VALIDE','PAYE')),0) AS available`,[orgId,payoutId]);
+  return Number(bal.rows[0].available||0);
+}
 app.post('/api/admin/payouts/:id/status',requireAdmin,asyncRoute(async(req,res)=>{
   const status=clean(req.body.status,20);
   if(!['VALIDE','REFUSE','PAYE'].includes(status))return res.status(400).json({success:false,message:'Statut de retrait invalide.'});
@@ -1208,57 +1279,12 @@ app.post('/api/admin/payouts/:id/status',requireAdmin,asyncRoute(async(req,res)=
   if(status==='VALIDE'){
     const r=await pool.query(`UPDATE payouts SET status='VALIDE',tchin_status=COALESCE(tchin_status,'pending'),tchin_error=NULL,tchin_updated_at=NOW() WHERE id=$1 RETURNING *`,[payout.id]);
     await logAction(pool,'ADMIN','ADMIN','PAYOUT_VALIDE','payout',payout.id,{organizer_id:payout.org_id,amount:payout.amount});
-    return res.json({success:true,payout:r.rows[0],message:'Retrait validé. Il doit maintenant être payé via Tchin.'});
+    payout=r.rows[0];
   }
 
-  // PAYE = déclenchement réel du décaissement Tchin.
-  if(!process.env.TCHIN_PUBLIC_KEY||!process.env.TCHIN_PRIVATE_KEY)return res.status(503).json({success:false,message:'Tchin n’est pas configuré sur le serveur.'});
-  if(!payout.withdraw_mode)return res.status(400).json({success:false,message:'Opérateur Tchin manquant sur cette demande de retrait.'});
-  if(payout.tchin_disburse_token)return res.status(409).json({success:false,message:'Un décaissement Tchin existe déjà pour cette demande. Vérifiez son statut.'});
-
-  let init;
-  try{
-    init=await tchinRequest('/disburse/initiate',{
-      method:'POST',
-      body:JSON.stringify({
-        account_alias:payout.account,
-        amount:Number(payout.amount),
-        withdraw_mode:payout.withdraw_mode
-      })
-    });
-    if(!init.success||!init.disburse_token)throw new Error(init.message||'Tchin n’a pas préparé le décaissement.');
-  }catch(e){
-    await pool.query(`UPDATE payouts SET tchin_status='failed',tchin_error=$1,tchin_updated_at=NOW() WHERE id=$2`,[e.message,payout.id]);
-    return res.status(400).json({success:false,message:`Tchin : ${e.message}`});
-  }
-
-  await pool.query(`UPDATE payouts SET tchin_disburse_token=$1,tchin_fee=$2,tchin_debited=$3,tchin_status='initiated',tchin_error=NULL,tchin_updated_at=NOW(),status='VALIDE' WHERE id=$4`,
-    [init.disburse_token,Number(init.fee||0),Number(init.debited||0),payout.id]);
-
-  let submit;
-  try{
-    submit=await tchinRequest('/disburse/submit',{
-      method:'POST',
-      body:JSON.stringify({disburse_token:init.disburse_token})
-    });
-  }catch(e){
-    await pool.query(`UPDATE payouts SET tchin_status='failed',tchin_error=$1,tchin_updated_at=NOW() WHERE id=$2`,[e.message,payout.id]);
-    return res.status(400).json({success:false,message:`Tchin : ${e.message}`});
-  }
-
-  const submitStatus=String(submit.status||'').toLowerCase();
-  if(['success','completed','successful'].includes(submitStatus)){
-    const updated=await pool.query(`UPDATE payouts SET status='PAYE',tchin_status='success',tchin_transaction_id=$1,tchin_error=NULL,tchin_updated_at=NOW(),processed_at=NOW() WHERE id=$2 RETURNING *`,
-      [submit.transaction_id||submit.data?.transaction_id||null,payout.id]);
-    await logAction(pool,'ADMIN','ADMIN','PAYOUT_PAYE_TCHIN','payout',payout.id,{organizer_id:payout.org_id,amount:payout.amount,tchin_transaction_id:submit.transaction_id||null});
-    return res.json({success:true,payout:updated.rows[0],message:'Retrait envoyé avec succès via Tchin.'});
-  }
-
-  // pending: ne jamais resoumettre. Le prochain rafraîchissement vérifie le statut.
-  const updated=await pool.query(`UPDATE payouts SET tchin_status='pending',tchin_error=$1,tchin_updated_at=NOW() WHERE id=$2 RETURNING *`,
-    [submit.message||'Décaissement Tchin en cours.',payout.id]);
-  await logAction(pool,'ADMIN','ADMIN','PAYOUT_TCHIN_PENDING','payout',payout.id,{organizer_id:payout.org_id,amount:payout.amount});
-  res.json({success:true,payout:updated.rows[0],message:'Décaissement Tchin en cours. Ticketora ne renverra pas la demande.'});
+  // Valider ET Payer déclenchent maintenant le vrai décaissement Tchin.
+  const out=await sendTchinPayout(payout);
+  return res.status(out.http).json(out.body);
 }));
 
 app.get('/api/admin/withdrawals',requireAdmin,asyncRoute(async(req,res)=>{
