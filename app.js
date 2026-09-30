@@ -58,7 +58,7 @@ function openEventDetails(eventId){
  const d=document.createElement('div'); d.id='event-detail-modal'; d.className='fixed inset-0 z-[92] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto';
  const poster=e.image_url?`<img src="${esc(e.image_url)}" alt="${esc(e.title)}" class="w-full h-64 md:h-80 object-cover">`:`<div class="w-full h-64 md:h-80 bg-gradient-to-br from-[#071a3b] to-[#102d5e] flex items-center justify-center"><img src="logo.png" class="w-24 h-24 object-contain opacity-80" alt="Ticketora"></div>`;
  const rows=cats.map(c=>`<div class="flex items-center justify-between gap-3 border border-slate-200 rounded-xl px-3 py-2"><span class="font-bold text-slate-800">${esc(c.name)}</span><span class="font-black text-[#071a3b]">${fmt(c.price)} FCFA <small class="font-semibold text-slate-400">· stock ${Math.max(0,Number(c.total_stock||0)-Number(c.sold_count||0))}</small></span></div>`).join('');
- d.innerHTML=`<div class="bg-white w-full max-w-3xl rounded-3xl overflow-hidden shadow-2xl my-6"><div class="relative">${poster}<button aria-label="Retour" onclick="this.closest('#event-detail-modal').remove();history.replaceState({},'',location.pathname+location.hash)" class="absolute top-4 left-4 px-4 h-10 rounded-full bg-black/60 text-white flex items-center justify-center gap-2 font-bold"><i class="fa-solid fa-arrow-left"></i><span>Retour</span></button><button aria-label="Fermer" onclick="this.closest('#event-detail-modal').remove();history.replaceState({},'',location.pathname+location.hash)" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button></div><div class="p-6 md:p-7"><div class="flex flex-wrap items-center gap-2"><span class="text-[10px] font-black uppercase bg-orange-50 text-[#F97316] px-2 py-1 rounded-full">${esc(e.category||'Événement')}</span>${e.organizer_verified?'<span class="text-[10px] font-black uppercase bg-emerald-50 text-emerald-600 px-2 py-1 rounded-full"><i class="fa-solid fa-circle-check mr-1"></i>Vérifié</span>':''}</div><h2 class="text-3xl font-black text-[#071a3b] mt-3">${esc(e.title)}</h2><div class="grid sm:grid-cols-2 gap-3 mt-4 text-sm"><div class="bg-slate-50 rounded-xl p-3"><b class="text-slate-800">Date</b><p class="text-slate-500 mt-1">${esc(e.date||'')}</p></div><div class="bg-slate-50 rounded-xl p-3"><b class="text-slate-800">Lieu</b><p class="text-slate-500 mt-1">${esc(e.venue_name||e.location||e.city||'')}</p></div><div class="bg-slate-50 rounded-xl p-3"><b class="text-slate-800">Ville</b><p class="text-slate-500 mt-1">${esc(e.city||'')}</p></div><div class="bg-slate-50 rounded-xl p-3"><b class="text-slate-800">Adresse</b><p class="text-slate-500 mt-1">${esc(e.address||e.location||'')}</p></div></div><p class="text-slate-600 leading-7 mt-5 whitespace-pre-wrap">${esc(e.description||'Aucune description.')}</p><div class="mt-5"><h3 class="font-black text-[#071a3b]">Billets & tarifs</h3><div class="space-y-2 mt-2">${rows||`<div class="border rounded-xl p-3 flex justify-between"><b>Standard</b><b>${fmt(price)} FCFA</b></div>`}</div></div><div class="flex flex-wrap gap-2 mt-6">${!e.sold_out?`<button onclick="openBuyModal(${Number(e.id)});document.getElementById('event-detail-modal')?.remove()" class="flex-1 min-w-[160px] bg-[#F97316] text-white font-black py-3 rounded-xl">${String(e.event_type||'PAID')==='FREE'?'Participer':'Acheter un billet'}</button>`:'<div class="flex-1 min-w-[160px] bg-red-50 text-red-600 font-black py-3 rounded-xl text-center">SOLD OUT</div>'}<button onclick="shareEvent(${Number(e.id)},'${encodeURIComponent(`${location.origin}${location.pathname}?event=${e.id}`)}')" class="px-5 py-3 border border-slate-200 rounded-xl font-bold text-slate-700">Partager</button>${mapLink?`<a href="${mapLink}" target="_blank" rel="noopener" class="px-5 py-3 border border-slate-200 rounded-xl font-bold text-slate-700">Voir sur la carte</a>`:''}<button onclick="this.closest('#event-detail-modal').remove();history.replaceState({},'',location.pathname+location.hash)" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black"><i class="fa-solid fa-arrow-left mr-2"></i>Retour aux événements</button></div></div></div>`;
+ d.innerHTML=`<div class="bg-white w-full max-w-3xl rounded-3xl overflow-hidden shadow-2xl my-6"><div class="relative">${poster}<button aria-label="Retour" onclick="this.closest('#event-detail-modal').remove();history.replaceState({},'',location.pathname+location.hash)" class="absolute top-4 left-4 px-4 h-10 rounded-full bg-black/60 text-white flex items-center justify-center gap-2 font-bold"><i class="fa-solid fa-arrow-left"></i><span>Retour</span></button><button aria-label="Fermer" onclick="this.closest('#event-detail-modal').remove();history.replaceState({},'',location.pathname+location.hash)" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button></div><div class="p-6 md:p-7"><div class="flex flex-wrap items-center gap-2"><span class="text-[10px] font-black uppercase bg-orange-50 text-[#F97316] px-2 py-1 rounded-full">${esc(e.category||'Événement')}</span>${e.organizer_verified?'<span class="text-[10px] font-black uppercase bg-emerald-50 text-emerald-600 px-2 py-1 rounded-full"><i class="fa-solid fa-circle-check mr-1"></i>Vérifié</span>':''}</div><h2 class="text-3xl font-black text-[#071a3b] mt-3">${esc(e.title)}</h2><div class="grid sm:grid-cols-2 gap-3 mt-4 text-sm"><div class="bg-slate-50 rounded-xl p-3"><b class="text-slate-800">Date</b><p class="text-slate-500 mt-1">${esc(e.date||'')}</p></div><div class="bg-slate-50 rounded-xl p-3"><b class="text-slate-800">Lieu</b><p class="text-slate-500 mt-1">${esc(e.venue_name||e.location||e.city||'')}</p></div><div class="bg-slate-50 rounded-xl p-3"><b class="text-slate-800">Ville</b><p class="text-slate-500 mt-1">${esc(e.city||'')}</p></div><div class="bg-slate-50 rounded-xl p-3"><b class="text-slate-800">Adresse</b><p class="text-slate-500 mt-1">${esc(e.address||e.location||'')}</p></div></div><p class="text-slate-600 leading-7 mt-5 whitespace-pre-wrap">${esc(e.description||'Aucune description.')}</p><div class="mt-5"><h3 class="font-black text-[#071a3b]">Billets & tarifs</h3><div class="space-y-2 mt-2">${rows||`<div class="border rounded-xl p-3 flex justify-between"><b>Standard</b><b>${fmt(price)} FCFA</b></div>`}</div></div><div class="flex flex-wrap gap-2 mt-6">${!e.sold_out?`<button onclick="openBuyModal(${Number(e.id)});document.getElementById('event-detail-modal')?.remove()" class="flex-1 min-w-[160px] bg-[#F97316] text-white font-black py-3 rounded-xl">${String(e.event_type||'PAID')==='FREE'?'Participer':'Acheter un billet'}</button>`:'<div class="flex-1 min-w-[160px] bg-red-50 text-red-600 font-black py-3 rounded-xl text-center">SOLD OUT</div>'}<button onclick="shareEvent(${Number(e.id)},'${encodeURIComponent(`${location.origin}${location.pathname}?event=${e.id}`)}')" class="px-5 py-3 border border-slate-200 rounded-xl font-bold text-slate-700">Partager</button>${mapLink?`<a href="${mapLink}" target="_blank" rel="noopener" class="px-5 py-3 border border-slate-200 rounded-xl font-bold text-slate-700">Voir sur la carte</a>`:''}<button onclick="this.closest('#event-detail-modal')?.remove();history.replaceState({},'',location.pathname+location.hash)" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black"><i class="fa-solid fa-arrow-left mr-2"></i>Retour aux événements</button></div></div></div>`;
  document.body.appendChild(d);
  history.replaceState({},'',`${location.pathname}?event=${encodeURIComponent(e.id)}`);
 }
@@ -110,10 +110,10 @@ function retryTicketPayment(){
   const raw=sessionStorage.getItem('ticketora_pending_purchase');if(!raw){closeBuyModal();return;}
   try{const p=JSON.parse(raw);history.replaceState({},'',location.pathname);if(p.eventId)openBuyModal(p.eventId);setTimeout(()=>{if($('buy-name'))$('buy-name').value=p.name||'';if($('buy-email'))$('buy-email').value=p.email||'';if($('buy-phone'))$('buy-phone').value=p.phone||'';if($('buy-promo'))$('buy-promo').value=p.promo||'';if(p.ticketType&&$('buy-ticket-type')){$('buy-ticket-type').value=p.ticketType;$('buy-ticket-type').dispatchEvent(new Event('change'));}},0);}catch{closeBuyModal();}
 }
-function restoreCagnotteContributionForm(){const panel=$('modal-cagnotte')?.querySelector('.bg-white');if(!panel)return;panel.innerHTML=`<button onclick="closeCagnotteModal()" class="absolute top-4 right-4 text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button><div class="w-12 h-12 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-hand-holding-heart"></i></div><h3 id="cag-modal-title" class="text-2xl font-black text-[#071a3b] mt-4"></h3><p id="cag-modal-desc" class="text-sm text-slate-500 mt-2"></p><div class="mt-5 space-y-3"><input id="cag-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Votre nom (facultatif)"><input id="cag-email" type="email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Email (facultatif)"><input id="cag-amount" type="number" min="100" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-bold" placeholder="Montant de votre contribution en FCFA"><button onclick="contributeCagnotte()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Contribuer avec Tchin</button><p class="text-[11px] text-slate-400">Le montant n’est pas fixé par la cagnotte : vous choisissez librement votre contribution (minimum 100 FCFA pour le paiement).</p></div>`;}
+function restoreCagnotteContributionForm(){const panel=$('modal-cagnotte')?.querySelector('.bg-white');if(!panel)return;panel.innerHTML=`<button onclick="closeCagnotteModal()" class="absolute top-4 right-4 text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button><div class="w-12 h-12 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-hand-holding-heart"></i></div><h3 id="cag-modal-title" class="text-2xl font-black text-[#071a3b] mt-4"></h3><p id="cag-modal-desc" class="text-sm text-slate-500 mt-2"></p><div class="mt-5 space-y-3"><input id="cag-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Votre nom (facultatif)"><input id="cag-email" type="email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Email (facultatif)"><input id="cag-amount" type="number" min="100" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-bold" placeholder="Montant de votre contribution en FCFA"><div id="cag-payment-slider" class="pay-slider pay-slider-orange" data-pay-action="contributeCagnotte"><span class="pay-slider-track">Glisser pour payer</span><span class="pay-slider-handle"><i class="fa-solid fa-arrow-right"></i></span></div><p class="text-[11px] text-slate-400">Le montant n’est pas fixé par la cagnotte : vous choisissez librement votre contribution (minimum 100 FCFA pour le paiement).</p></div>`;}
 function retryCagnotteContribution(){
   const raw=sessionStorage.getItem('ticketora_pending_cagnotte');if(!raw){closeCagnotteModal();return;}
-  try{const p=JSON.parse(raw);history.replaceState({},'',location.pathname);restoreCagnotteContributionForm();const g=cachedCagnottes.find(x=>Number(x.id)===Number(p.cagnotteId));if(g)activeCagnotte=g;if(activeCagnotte){$('cag-modal-title').innerText=activeCagnotte.title;$('cag-modal-desc').innerText=activeCagnotte.description;$('cag-name').value=p.name||'';$('cag-email').value=p.email||'';$('cag-amount').value=p.amount||'';$('modal-cagnotte').classList.remove('hidden');}}catch{closeCagnotteModal();}
+  try{const p=JSON.parse(raw);history.replaceState({},'',location.pathname);restoreCagnotteContributionForm();const g=cachedCagnottes.find(x=>Number(x.id)===Number(p.cagnotteId));if(g)activeCagnotte=g;if(activeCagnotte){$('cag-modal-title').innerText=activeCagnotte.title;$('cag-modal-desc').innerText=activeCagnotte.description;$('cag-name').value=p.name||'';$('cag-email').value=p.email||'';$('cag-amount').value=p.amount||'';$('modal-cagnotte').classList.remove('hidden');window.initPaymentSliders?.();}}catch{closeCagnotteModal();}
 }
 
 async function processPayment(){if(!activeBuyingEvent||!activeBuyingCategory)return;const name=$('buy-name').value.trim(),email=$('buy-email').value.trim(),phone=$('buy-phone').value.trim(),promo=$('buy-promo').value.trim().toUpperCase();if(!name||!email||!phone){resetPaySlider('ticket-payment-slider');return alert('Veuillez remplir tous les champs.');}try{sessionStorage.setItem('ticketora_pending_purchase',JSON.stringify({eventId:activeBuyingEvent.id,name,email,phone,ticketType:activeBuyingCategory.name,quantity:activeBuyQuantity,promo}));const d=await api('/api/payments/create',{method:'POST',body:JSON.stringify({eventId:activeBuyingEvent.id,name,email,phone,ticketType:activeBuyingCategory.name,quantity:activeBuyQuantity,promo})});if(d.free&&d.tickets){sessionStorage.removeItem('ticketora_pending_purchase');$('modal-buy-ticket')?.classList.remove('hidden');$('buy-step-1')?.classList.add('hidden');$('buy-step-2')?.classList.remove('hidden');renderTickets(d.tickets,true);return;}if(d.payment_url)window.location.href=d.payment_url;else throw new Error('Lien de paiement indisponible.');}catch(e){resetPaySlider('ticket-payment-slider');alert(e.message);}}
@@ -445,14 +445,71 @@ window.showMyTickets=showMyTickets;window.lookupMyTickets=lookupMyTickets;window
 // ============================================================
 (function(){
   const initSlider=(el)=>{
-    if(!el||el.dataset.ready==='1')return;el.dataset.ready='1';
-    const handle=el.querySelector('.pay-slider-handle');if(!handle)return;
-    let dragging=false,startX=0,startLeft=3,done=false;
-    const finish=()=>{if(done)return;const max=el.clientWidth-handle.offsetWidth-6;const left=parseFloat(handle.style.left||'3');if(left>=max*0.88){handle.style.left=max+'px';done=true;el.classList.add('completed');const action=el.dataset.payAction;if(action&&typeof window[action]==='function')window[action]();}else handle.style.left='3px';el.classList.remove('dragging');dragging=false;};
-    handle.addEventListener('pointerdown',e=>{if(done)return;dragging=true;startX=e.clientX;startLeft=parseFloat(handle.style.left||'3');el.classList.add('dragging');handle.setPointerCapture?.(e.pointerId);e.preventDefault();});
-    handle.addEventListener('pointermove',e=>{if(!dragging||done)return;const max=el.clientWidth-handle.offsetWidth-6;const next=Math.max(3,Math.min(max,startLeft+e.clientX-startX));handle.style.left=next+'px';});
-    handle.addEventListener('pointerup',finish);handle.addEventListener('pointercancel',finish);
-    el.addEventListener('keydown',e=>{if(e.key==='ArrowRight'&&!done){const max=el.clientWidth-handle.offsetWidth-6;handle.style.left=max+'px';finish();}});
+    if(!el)return;
+    if(el.dataset.ready==='1')return;
+    const handle=el.querySelector('.pay-slider-handle');
+    if(!handle)return;
+    el.dataset.ready='1';
+    el.style.touchAction='none';
+    handle.style.touchAction='none';
+    handle.style.left=handle.style.left||'3px';
+    let dragging=false,startX=0,startLeft=3,pointerId=null,done=false;
+    const getMax=()=>Math.max(3,el.clientWidth-handle.offsetWidth-6);
+    const finish=()=>{
+      if(done)return;
+      const max=getMax();
+      const left=parseFloat(handle.style.left||'3');
+      if(left>=max*0.88){
+        handle.style.left=max+'px';
+        done=true;
+        el.classList.add('completed');
+        const action=el.dataset.payAction;
+        if(action&&typeof window[action]==='function')window[action]();
+      }else{
+        handle.style.left='3px';
+      }
+      el.classList.remove('dragging');
+      dragging=false;
+      pointerId=null;
+    };
+    const move=(e)=>{
+      if(!dragging||done)return;
+      const max=getMax();
+      const next=Math.max(3,Math.min(max,startLeft+(e.clientX-startX)));
+      handle.style.left=next+'px';
+      e.preventDefault();
+    };
+    const down=(e)=>{
+      if(done)return;
+      pointerId=e.pointerId;
+      dragging=true;
+      startX=e.clientX;
+      startLeft=parseFloat(handle.style.left||'3');
+      el.classList.add('dragging');
+      try{el.setPointerCapture?.(e.pointerId)}catch{}
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const up=(e)=>{
+      if(!dragging)return;
+      if(pointerId!==null&&e.pointerId!==pointerId)return;
+      finish();
+      e.preventDefault();
+    };
+    // Le slider entier accepte le démarrage du glissement, pas seulement la flèche.
+    el.addEventListener('pointerdown',down);
+    el.addEventListener('pointermove',move);
+    el.addEventListener('pointerup',up);
+    el.addEventListener('pointercancel',up);
+    el.addEventListener('lostpointercapture',()=>{if(dragging)finish();});
+    el.addEventListener('keydown',e=>{
+      if(done)return;
+      if(e.key==='ArrowRight'||e.key==='End'){e.preventDefault();handle.style.left=getMax()+'px';finish();}
+      else if(e.key==='Home'){e.preventDefault();handle.style.left='3px';}
+    });
+    el.setAttribute('tabindex','0');
+    el.setAttribute('role','slider');
+    el.setAttribute('aria-label','Glisser pour payer');
   };
   const scan=()=>document.querySelectorAll('.pay-slider').forEach(initSlider);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scan);else scan();

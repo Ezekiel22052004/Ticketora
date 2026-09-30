@@ -116,20 +116,8 @@ function customerFeeFor(amount){return Math.round(Number(amount||0)*TCHIN_CUSTOM
 function customerTotalFor(amount){const base=Number(amount||0);return base+customerFeeFor(base);}
 function logAction(client,actorType,actorId,action,entityType,entityId,metadata={}){return client.query('INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata) VALUES($1,$2,$3,$4,$5,$6)',[actorType,String(actorId||''),action,entityType||null,entityId?String(entityId):null,JSON.stringify(metadata)]);}
 
-const path=require('path');
-const TICKET_TEMPLATE_PATH=path.join(__dirname,'ticket-template.png');
-const TICKET_TEMPLATE_VIP_PATH=path.join(__dirname,'ticket-template-vip.png');
-const TICKET_TEMPLATE_VVIP_PATH=path.join(__dirname,'ticket-template-vvip.png');
-function escXml(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
-function ticketTextSize(value,maxWidth,base=17,min=10){let n=Math.max(0,String(value??'').length),size=base;while(size>min && n*size*0.56>maxWidth)size-=0.5;return Math.max(min,size);}
-function formatTicketDate(value){
-  const raw=String(value??'').trim();
-  if(!raw)return '';
-  const m=raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(m){const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'});}
-  const d=new Date(raw); if(Number.isFinite(d.getTime())) return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'});
-  return raw;
-}
+const TICKET_TEMPLATE_PATH=require('path').join(__dirname,'ticket-template.png');
+
 function normalizeTicketCategory(value){
   const v=String(value??'').trim().toUpperCase();
   if(v==='VVIP')return 'VVIP';
@@ -154,24 +142,26 @@ async function enrichTicketForTemplate(ticket){
   }
   return {...ticket,organizer_name:organizerName,event_time:eventTime};
 }
+function escXml(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
+function ticketTextSize(value,maxWidth,base=17,min=10){let n=Math.max(0,String(value??'').length),size=base;while(size>min && n*size*0.56>maxWidth)size-=0.5;return Math.max(min,size);}
+function formatTicketDate(value){
+  const raw=String(value??'').trim();
+  if(!raw)return '';
+  const m=raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m){const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'});}
+  const d=new Date(raw); if(Number.isFinite(d.getTime())) return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'});
+  return raw;
+}
 async function buildTicketImage(ticket) {
   ticket=await enrichTicketForTemplate(ticket);
   const category=normalizeTicketCategory(ticket.ticket_type);
-  const qrRaw=await QRCode.toBuffer(String(ticket.code),{width:500,margin:0,errorCorrectionLevel:'M',type:'png'});
-  const eventTitle=clean(ticket.event_title,255);
-  const location=clean(ticket.event_location,255);
-  const participant=clean(ticket.customer_name,255);
-  const date=formatTicketDate(ticket.event_date);
-  const organizer=clean(ticket.organizer_name,255);
-  const time=formatTicketTime(ticket.event_time);
-  const ticketNumber=clean(ticket.ticket_number||'',40).toUpperCase();
-
   if(category==='VIP' || category==='VVIP'){
     const isVip=category==='VIP';
     const width=isVip?1774:1983;
     const height=isVip?887:793;
     const template=isVip?TICKET_TEMPLATE_VIP_PATH:TICKET_TEMPLATE_VVIP_PATH;
-    const qr=await sharp(qrRaw).resize(250,250,{fit:'contain'}).png().toBuffer();
+    const qrSize=isVip?250:250;
+    const qr=await sharp(qrRawVip).resize(qrSize,qrSize,{fit:'contain'}).png().toBuffer();
     const fields=isVip?[
       {text:eventTitle,x:300,y:304,maxWidth:800,size:24,minSize:12},
       {text:organizer,x:300,y:411,maxWidth:800,size:24,minSize:12},
@@ -186,14 +176,16 @@ async function buildTicketImage(ticket) {
       {text:location,x:1080,y:548,maxWidth:250,size:18,minSize:10}
     ];
     const textSvg=fields.map(f=>{
-      const fs=ticketTextSize(f.text,f.maxWidth,f.size,f.minSize);
+      let fs=ticketTextSize(f.text,f.maxWidth,f.size,f.minSize);
       return `<text x="${f.x}" y="${f.y}" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${fs}px" font-weight="800" dominant-baseline="middle" text-anchor="start" ${f.text.length>30?`textLength="${f.maxWidth}" lengthAdjust="spacingAndGlyphs"`:''}>${escXml(f.text)}</text>`;
     }).join('');
     const categorySvg=isVip?'<text x="430" y="603" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="32px" font-weight="900" dominant-baseline="middle">VIP</text>':'';
-    const number=ticketNumber||'';
+    const number= ticketNumber || '';
     const code=clean(ticket.code,32).toUpperCase();
-    const numX=isVip?1650:1510, numY=isVip?480:527;
-    const codeX=isVip?1590:1470, codeY=isVip?690:699;
+    const numX=isVip?1650:1510;
+    const numY=isVip?480:527;
+    const codeX=isVip?1590:1470;
+    const codeY=isVip?690:699;
     const numberSize=ticketTextSize(number,210,21,11);
     const codeSize=ticketTextSize(code,250,17,9);
     const overlay=Buffer.from(`<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${textSvg}${categorySvg}<text x="${numX}" y="${numY}" text-anchor="middle" dominant-baseline="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${numberSize}px" font-weight="800">${escXml(number)}</text><text x="${codeX}" y="${codeY}" text-anchor="middle" dominant-baseline="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${codeSize}px" font-weight="700">${escXml(code)}</text></svg>`);
@@ -202,19 +194,357 @@ async function buildTicketImage(ticket) {
     return sharp(template).composite([{input:qr,left:qrLeft,top:qrTop},{input:overlay,left:0,top:0}]).png().toBuffer();
   }
 
-  const qr=await sharp(qrRaw).resize(150,150,{fit:'contain'}).png().toBuffer();
-  const width=1672,height=941;
-  const type=clean(ticket.ticket_type,120);
-  const fields=[
-    {text:date,x:335,y:362,maxWidth:545,size:21,minSize:12},
-    {text:location,x:335,y:465,maxWidth:545,size:21,minSize:12},
-    {text:type,x:335,y:568,maxWidth:545,size:21,minSize:12},
-    {text:participant,x:335,y:681,maxWidth:545,size:21,minSize:12},
-    {text:eventTitle,x:335,y:797,maxWidth:800,size:21,minSize:12}
+
+  // ============================================================
+  // 1. GÉNÉRATION DU QR CODE
+  // ============================================================
+
+  const qrRaw = await QRCode.toBuffer(String(ticket.code), {
+    width: 240,
+    margin: 0,
+    errorCorrectionLevel: 'M',
+    type: 'png'
+  });
+
+  const qr = await sharp(qrRaw)
+    .resize(150, 150, {
+      fit: 'contain'
+    })
+    .png()
+    .toBuffer();
+
+
+  // ============================================================
+  // 2. DONNÉES DU BILLET
+  // ============================================================
+
+  const eventTitle = clean(ticket.event_title, 255);
+  const location = clean(ticket.event_location, 255);
+  const type = clean(ticket.ticket_type, 120);
+  const participant = clean(ticket.customer_name, 255);
+  const date = formatTicketDate(ticket.event_date);
+
+  const ticketNumber = clean(
+    ticket.ticket_number || ticket.code,
+    40
+  ).toUpperCase();
+
+
+  // ============================================================
+  // 3. DIMENSIONS EXACTES DE LA TEMPLATE
+  // ============================================================
+
+  const WIDTH = 1672;
+  const HEIGHT = 941;
+
+
+  // ============================================================
+  // 4. ZONES DES INFORMATIONS
+  //
+  // Textes descendus de 12 px pour mieux rester
+  // dans la partie basse des bandes grises.
+  // ============================================================
+
+  const fields = [
+    {
+      text: date,
+      x: 335,
+      y: 362,
+      maxWidth: 545,
+      size: 21,
+      minSize: 12
+    },
+
+    {
+      text: location,
+      x: 335,
+      y: 465,
+      maxWidth: 545,
+      size: 21,
+      minSize: 12
+    },
+
+    {
+      text: type,
+      x: 335,
+      y: 568,
+      maxWidth: 545,
+      size: 21,
+      minSize: 12
+    },
+
+    {
+      text: participant,
+      x: 335,
+      y: 681,
+      maxWidth: 545,
+      size: 21,
+      minSize: 12
+    },
+
+    {
+      text: eventTitle,
+      x: 335,
+      y: 797,
+      maxWidth: 800,
+      size: 21,
+      minSize: 12
+    }
   ];
-  const textSvg=fields.map(f=>{const fs=ticketTextSize(f.text,f.maxWidth,f.size,f.minSize);return `<text x="${f.x}" y="${f.y}" fill="#17233d" font-family="Arial, Helvetica, sans-serif" font-size="${fs}px" font-weight="700" dominant-baseline="middle" text-anchor="start" lengthAdjust="spacingAndGlyphs" ${f.text.length>35?`textLength="${f.maxWidth}"`:''}>${escXml(f.text)}</text>`}).join('');
-  const overlay=Buffer.from(`<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${textSvg}</svg>`);
-  return sharp(TICKET_TEMPLATE_PATH).composite([{input:qr,left:975,top:390},{input:overlay,left:0,top:0}]).png().toBuffer();
+
+
+  // ============================================================
+  // 5. GÉNÉRATION DES TEXTES
+  // ============================================================
+
+  const textSvg = fields
+    .map(field => {
+      let fontSize = ticketTextSize(
+        field.text,
+        field.maxWidth,
+        field.size,
+        field.minSize
+      );
+
+      // Sécurité supplémentaire
+      if (!Number.isFinite(fontSize)) {
+        fontSize = field.size;
+      }
+
+      fontSize = Math.max(
+        field.minSize,
+        Math.min(field.size, fontSize)
+      );
+
+      return `
+        <text
+          x="${field.x}"
+          y="${field.y}"
+          fill="#17233d"
+          font-family="Arial, Helvetica, sans-serif"
+          font-size="${fontSize}px"
+          font-weight="700"
+          dominant-baseline="middle"
+          text-anchor="start"
+          lengthAdjust="spacingAndGlyphs"
+          ${field.text.length > 35
+            ? `textLength="${field.maxWidth}"`
+            : ''
+          }
+        >${escXml(field.text)}</text>
+      `;
+    })
+    .join('');
+
+
+  // ============================================================
+  // 6. NUMÉRO DU BILLET
+  // ============================================================
+
+  const idSize = ticketTextSize(
+    ticketNumber,
+    215,
+    18,
+    11
+  );
+
+
+  // ============================================================
+  // 7. SVG OVERLAY
+  // ============================================================
+
+  const overlay = Buffer.from(`
+    <svg
+      width="${WIDTH}"
+      height="${HEIGHT}"
+      viewBox="0 0 ${WIDTH} ${HEIGHT}"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+
+      ${textSvg}
+
+      <!-- NUMÉRO DU BILLET -->
+      <text
+        x="1417"
+        y="735"
+        text-anchor="middle"
+        dominant-baseline="middle"
+        fill="#17233d"
+        font-family="Arial, Helvetica, sans-serif"
+        font-size="${idSize}px"
+        font-weight="800"
+      >${escXml(ticketNumber)}</text>
+
+    </svg>
+  `);
+
+
+  // ============================================================
+  // 8. COMPOSITION FINALE
+  // ============================================================
+
+  return sharp(TICKET_TEMPLATE_PATH)
+    .composite([
+
+      // QR CODE
+      {
+        input: qr,
+        left: 975,
+        top: 390
+      },
+
+      // TEXTES
+      {
+        input: overlay,
+        left: 0,
+        top: 0
+      }
+
+    ])
+    .png()
+    .toBuffer();
+}
+
+async function ensureEventImageColumn(){
+  if(!process.env.DATABASE_URL) return;
+  await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS image_url TEXT`);
+  await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS event_type VARCHAR(10) NOT NULL DEFAULT 'PAID'`);
+}
+
+async function ensurePromoTables(){
+  if(!process.env.DATABASE_URL) return;
+  await pool.query(`CREATE TABLE IF NOT EXISTS promo_codes (
+    id BIGSERIAL PRIMARY KEY,
+    org_id BIGINT NOT NULL REFERENCES organizers(id) ON DELETE CASCADE,
+    event_id BIGINT REFERENCES events(id) ON DELETE CASCADE,
+    code VARCHAR(60) NOT NULL,
+    discount_type VARCHAR(20) NOT NULL CHECK(discount_type IN ('PERCENT','FIXED')),
+    discount_value INTEGER NOT NULL CHECK(discount_value > 0),
+    starts_at TIMESTAMPTZ,
+    ends_at TIMESTAMPTZ,
+    max_uses INTEGER CHECK(max_uses IS NULL OR max_uses > 0),
+    max_uses_per_customer INTEGER NOT NULL DEFAULT 1 CHECK(max_uses_per_customer > 0),
+    min_amount INTEGER NOT NULL DEFAULT 0 CHECK(min_amount >= 0),
+    allowed_ticket_types JSONB NOT NULL DEFAULT '[]'::jsonb,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(org_id, code)
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS promo_usages (
+    id BIGSERIAL PRIMARY KEY,
+    promo_id BIGINT NOT NULL REFERENCES promo_codes(id) ON DELETE CASCADE,
+    order_id BIGINT NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+    customer_email VARCHAR(255) NOT NULL,
+    discount_amount INTEGER NOT NULL CHECK(discount_amount >= 0),
+    status VARCHAR(20) NOT NULL DEFAULT 'RESERVED' CHECK(status IN ('RESERVED','USED','CANCELLED')),
+    reserved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    used_at TIMESTAMPTZ,
+    UNIQUE(promo_id, order_id)
+  )`);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_promo_codes_org ON promo_codes(org_id)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_promo_codes_event ON promo_codes(event_id)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes(code)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_promo_usages_promo ON promo_usages(promo_id,status)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_promo_usages_customer ON promo_usages(promo_id,customer_email,status)');
+}
+function promoTypes(v){return Array.isArray(v)?v.map(x=>clean(x,120)).filter(Boolean).slice(0,50):[];}
+function normalizePromoCode(v){return clean(v,60).toUpperCase().replace(/\s+/g,'');}
+function promoDiscount(promo,baseAmount){
+  let discount=promo.discount_type==='PERCENT'?Math.round(baseAmount*Number(promo.discount_value)/100):Number(promo.discount_value);
+  discount=Math.max(0,Math.min(discount,baseAmount));
+  return discount;
+}
+async function getValidPromo(client,{orgId,eventId,ticketType,customerEmail,baseAmount,code,lock=false}){
+  const sql=`SELECT p.*,e.title AS event_title FROM promo_codes p LEFT JOIN events e ON e.id=p.event_id WHERE p.org_id=$1 AND p.code=$2${lock?' FOR UPDATE OF p':''}`;
+  const r=await client.query(sql,[orgId,normalizePromoCode(code)]);
+  if(!r.rows.length) throw new Error('Code promo invalide.');
+  const p=r.rows[0],now=Date.now();
+  if(!p.active) throw new Error('Ce code promo est désactivé.');
+  if(p.starts_at && now<new Date(p.starts_at).getTime()) throw new Error('Ce code promo n’est pas encore actif.');
+  if(p.ends_at && now>new Date(p.ends_at).getTime()) throw new Error('Ce code promo a expiré.');
+  if(p.event_id && Number(p.event_id)!==Number(eventId)) throw new Error('Ce code promo n’est pas valable pour cet événement.');
+  const allowed=promoTypes(p.allowed_ticket_types);
+  if(allowed.length && !allowed.some(x=>x.toLowerCase()===String(ticketType).toLowerCase())) throw new Error('Ce code promo n’est pas valable pour ce type de billet.');
+  if(Number(baseAmount)<Number(p.min_amount||0)) throw new Error(`Montant minimum requis : ${Number(p.min_amount)} FCFA.`);
+  const activeReserved=await client.query(`SELECT COUNT(*)::int n FROM promo_usages u JOIN orders o ON o.id=u.order_id WHERE u.promo_id=$1 AND u.status='RESERVED' AND u.reserved_at > NOW()-INTERVAL '30 minutes'`,[p.id]);
+  const used=await client.query(`SELECT COUNT(*)::int n FROM promo_usages WHERE promo_id=$1 AND status='USED'`,[p.id]);
+  const totalUses=Number(activeReserved.rows[0].n)+Number(used.rows[0].n);
+  if(p.max_uses!==null && totalUses>=Number(p.max_uses)) throw new Error('Ce code promo a atteint sa limite d’utilisation.');
+  const customerUsed=await client.query(`SELECT COUNT(*)::int n FROM promo_usages WHERE promo_id=$1 AND lower(customer_email)=lower($2) AND status='USED'`,[p.id,customerEmail]);
+  const customerReserved=await client.query(`SELECT COUNT(*)::int n FROM promo_usages u JOIN orders o ON o.id=u.order_id WHERE u.promo_id=$1 AND lower(u.customer_email)=lower($2) AND u.status='RESERVED' AND u.reserved_at > NOW()-INTERVAL '30 minutes'`,[p.id,customerEmail]);
+  if(Number(customerUsed.rows[0].n)+Number(customerReserved.rows[0].n)>=Number(p.max_uses_per_customer)) throw new Error('Vous avez déjà atteint la limite d’utilisation de ce code promo.');
+  const discount=promoDiscount(p,Number(baseAmount));
+  const total=Number(baseAmount)-discount;
+  if(total<100) throw new Error('Le montant final doit être d’au moins 100 FCFA.');
+  return {promo:p,discount,total};
+}
+
+async function ensureAdminPayoutTable(){
+  if(!process.env.DATABASE_URL) return;
+  await pool.query(`CREATE TABLE IF NOT EXISTS admin_payouts (
+    id BIGSERIAL PRIMARY KEY,
+    amount INTEGER NOT NULL CHECK (amount > 0),
+    account VARCHAR(120) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'EN_ATTENTE' CHECK (status IN ('EN_ATTENTE','PAYE','REFUSE')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    processed_at TIMESTAMPTZ
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_admin_payouts_status ON admin_payouts(status)`);
+}
+
+
+async function ensureTicketDownloadTable(){
+  if(!process.env.DATABASE_URL) return;
+  await pool.query(`CREATE TABLE IF NOT EXISTS ticket_downloads (
+    id BIGSERIAL PRIMARY KEY,
+    ticket_id BIGINT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    actor_type VARCHAR(30),
+    actor_id VARCHAR(100),
+    actor_email VARCHAR(255),
+    ip_address VARCHAR(100),
+    user_agent TEXT,
+    downloaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_ticket_downloads_ticket ON ticket_downloads(ticket_id,downloaded_at DESC)');
+}
+async function ensureSiteAccessTable(){
+  if(!process.env.DATABASE_URL) return;
+  await pool.query(`CREATE TABLE IF NOT EXISTS site_access (
+    id SMALLINT PRIMARY KEY DEFAULT 1 CHECK(id=1),
+    mode VARCHAR(20) NOT NULL DEFAULT 'PUBLIC' CHECK(mode IN ('PUBLIC','CLOSED','PROTECTED')),
+    access_email VARCHAR(255),
+    access_password_hash TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query(`INSERT INTO site_access(id,mode,version)
+    VALUES(1,'PUBLIC',1)
+    ON CONFLICT (id) DO NOTHING`);
+  await pool.query(`ALTER TABLE site_access ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1`);
+  await pool.query(`ALTER TABLE site_access ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+}
+
+async function getSiteAccess(){
+  await ensureSiteAccessTable();await ensureLiveTables();
+  const r=await pool.query('SELECT id,mode,access_email,version,updated_at FROM site_access WHERE id=1');
+  return r.rows[0]||{id:1,mode:'PUBLIC',access_email:null,version:1};
+}
+
+async function ensureAdminCredentials(){
+  if(!process.env.DATABASE_URL) return;
+  await pool.query(`CREATE TABLE IF NOT EXISTS admin_credentials (
+    id SMALLINT PRIMARY KEY DEFAULT 1 CHECK(id=1),
+    email VARCHAR(255) NOT NULL,
+    password_hash TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  const existing=await pool.query('SELECT id FROM admin_credentials WHERE id=1');
+  if(!existing.rows.length && process.env.ADMIN_PASSWORD){
+    const email=clean(process.env.ADMIN_EMAIL||'ticketora2026@gmail.com',255).toLowerCase();
+    const hash=await bcrypt.hash(String(process.env.ADMIN_PASSWORD),12);
+    await pool.query('INSERT INTO admin_credentials(id,email,password_hash) VALUES(1,$1,$2)',[email,hash]);
+  }
 }
 
 // ---------- CONTRÔLE D'ACCÈS DU SITE ----------
