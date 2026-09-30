@@ -116,10 +116,7 @@ function customerFeeFor(amount){return Math.round(Number(amount||0)*TCHIN_CUSTOM
 function customerTotalFor(amount){const base=Number(amount||0);return base+customerFeeFor(base);}
 function logAction(client,actorType,actorId,action,entityType,entityId,metadata={}){return client.query('INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata) VALUES($1,$2,$3,$4,$5,$6)',[actorType,String(actorId||''),action,entityType||null,entityId?String(entityId):null,JSON.stringify(metadata)]);}
 
-const path=require('path');
-const TICKET_TEMPLATE_PATH=path.join(__dirname,'ticket-template.png');
-const TICKET_TEMPLATE_VIP_PATH=path.join(__dirname,'ticket-template-vip.png');
-const TICKET_TEMPLATE_VVIP_PATH=path.join(__dirname,'ticket-template-vvip.png');
+const TICKET_TEMPLATE_PATH=require('path').join(__dirname,'ticket-template.png');
 function escXml(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
 function ticketTextSize(value,maxWidth,base=17,min=10){let n=Math.max(0,String(value??'').length),size=base;while(size>min && n*size*0.56>maxWidth)size-=0.5;return Math.max(min,size);}
 function formatTicketDate(value){
@@ -165,111 +162,6 @@ async function buildTicketImage(ticket) {
     40
   ).toUpperCase();
 
-
-  // VIP/VVIP: use the dedicated template. Standard code below remains unchanged.
-  const category = String(ticket.ticket_type || '').trim().toUpperCase();
-  if (category === 'VIP' || category === 'VVIP') {
-    const isVip = category === 'VIP';
-    const template = isVip ? TICKET_TEMPLATE_VIP_PATH : TICKET_TEMPLATE_VVIP_PATH;
-    const width = isVip ? 1774 : 1983;
-    const height = isVip ? 887 : 793;
-
-    // Only VIP/VVIP needs organizer name and event time.
-    let organizer = clean(ticket.organizer_name, 255);
-    let eventTime = String(ticket.event_time || '').trim();
-    if (!organizer || !eventTime) {
-      const info = await pool.query(
-        `SELECT e.event_time, o.nom AS organizer_name
-         FROM events e
-         LEFT JOIN organizers o ON o.id=e.org_id
-         WHERE e.id=$1`,
-        [ticket.event_id]
-      );
-      if (info.rows.length) {
-        if (!eventTime) eventTime = String(info.rows[0].event_time || '').trim();
-        if (!organizer) organizer = clean(info.rows[0].organizer_name, 255);
-      }
-    }
-    const timeMatch = eventTime.match(/^(\d{1,2}):(\d{2})/);
-    if (timeMatch) eventTime = `${String(timeMatch[1]).padStart(2,'0')}:${timeMatch[2]}`;
-
-    const qrRawVip = await QRCode.toBuffer(String(ticket.code), {
-      width: 500, margin: 0, errorCorrectionLevel: 'M', type: 'png'
-    });
-    const QR_ZONE = { x:1328, y:220, width:286, height:264 };
-    const QR_SIZE = Math.min(240, QR_ZONE.width, QR_ZONE.height);
-    const qrLeft = Math.round(QR_ZONE.x + (QR_ZONE.width - QR_SIZE) / 2);
-    const qrTop = Math.round(QR_ZONE.y + (QR_ZONE.height - QR_SIZE) / 2);
-    const qrVip = await sharp(qrRawVip).resize(QR_SIZE,QR_SIZE,{fit:'contain'}).png().toBuffer();
-
-    const fields = isVip ? [
-      // VIP template: exact grey-field boxes on the 1774 x 887 artwork.
-      // Every dynamic value is centered from the real zone rectangle.
-      {text:eventTitle,   x:196,  y:335, width:782, height:57,  size:42, minSize:16},
-      {text:organizer,    x:196,  y:440, width:706, height:45,  size:34, minSize:16},
-      {text:date,         x:286,  y:527, width:169, height:50,  size:20, minSize:11},
-      {text:eventTime,    x:606,  y:527, width:189, height:50,  size:20, minSize:11},
-      {text:location,     x:929,  y:527, width:274, height:50,  size:20, minSize:11}
-    ] : [
-      {text:eventTitle,x:285,y:307,maxWidth:800,size:24,minSize:12},
-      {text:organizer,x:285,y:414,maxWidth:720,size:24,minSize:12},
-      {text:date,x:335,y:548,maxWidth:175,size:18,minSize:10},
-      {text:eventTime,x:690,y:548,maxWidth:175,size:18,minSize:10},
-      {text:location,x:1080,y:548,maxWidth:250,size:18,minSize:10}
-    ];
-
-    const textSvg = fields.map(f => {
-      if (isVip) {
-        const centerX = f.x + f.width / 2;
-        const centerY = f.y + f.height / 2;
-        const safeWidth = Math.max(10, f.width - 28);
-        const fs = ticketTextSize(f.text, safeWidth, f.size, f.minSize);
-        return `<text x="${centerX}" y="${centerY}" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${fs}px" font-weight="800" dominant-baseline="middle" text-anchor="middle">${escXml(f.text)}</text>`;
-      }
-      const fs = ticketTextSize(f.text,f.maxWidth,f.size,f.minSize);
-      return `<text x="${f.x}" y="${f.y}" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${fs}px" font-weight="800" dominant-baseline="middle" text-anchor="start">${escXml(f.text)}</text>`;
-    }).join('');
-
-    const categoryZone = isVip
-      ? {x:280,y:650,width:590,height:47}
-      : null;
-    const categorySvg = categoryZone
-      ? (() => {
-          const centerX = categoryZone.x + categoryZone.width / 2;
-          const centerY = categoryZone.y + categoryZone.height / 2;
-          const fs = ticketTextSize('VIP', categoryZone.width - 28, 30, 16);
-          return `<text x="${centerX}" y="${centerY}" text-anchor="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${fs}px" font-weight="900" dominant-baseline="middle">VIP</text>`;
-        })()
-      : '';
-
-    const number = ticketNumber || '';
-    const code = clean(ticket.code,32).toUpperCase();
-    const numberZone = isVip
-      ? {x:1390,y:503,width:234,height:52}
-      : {x:1390,y:503,width:240,height:48};
-    const codeZone = isVip
-      ? {x:1337,y:678,width:272,height:43}
-      : {x:1340,y:678,width:270,height:43};
-    const numberX = numberZone.x + numberZone.width / 2;
-    const numberY = numberZone.y + numberZone.height / 2;
-    const codeX = codeZone.x + codeZone.width / 2;
-    const codeY = codeZone.y + codeZone.height / 2;
-    const numberSize = ticketTextSize(number, numberZone.width - 24, 20, 12);
-    const codeSize = ticketTextSize(code, codeZone.width - 24, 17, 10);
-
-    const overlay = Buffer.from(
-      `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${textSvg}${categorySvg}<text x="${numberX}" y="${numberY}" text-anchor="middle" dominant-baseline="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${numberSize}px" font-weight="800">${escXml(number)}</text><text x="${codeX}" y="${codeY}" text-anchor="middle" dominant-baseline="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${codeSize}px" font-weight="700">${escXml(code)}</text></svg>`
-    );
-
-    return sharp(template)
-      .composite([
-        // Center QR inside the printed VIP QR frame (about 290 x 265).
-        {input:qrVip,left:isVip ? qrLeft : 1375,top:isVip ? qrTop : 185},
-        {input:overlay,left:0,top:0}
-      ])
-      .png()
-      .toBuffer();
-  }
 
   // ============================================================
   // 3. DIMENSIONS EXACTES DE LA TEMPLATE
@@ -956,9 +848,8 @@ app.post('/api/payments/create',asyncRoute(async(req,res)=>{
 async function fulfillOrder(orderId,sourceData={}){
   const c=await pool.connect();try{await c.query('BEGIN');
     const or=await c.query('SELECT o.*,e.title event_title,e.date event_date,e.location event_location,e.org_id,e.capacity,e.ticket_categories,org.is_partner,org.partner_rate_under_5000,org.partner_rate_from_5000 FROM orders o JOIN events e ON e.id=o.event_id LEFT JOIN organizers org ON org.id=e.org_id WHERE o.id=$1 FOR UPDATE',[orderId]);if(!or.rows.length)throw new Error('Commande introuvable.');const o=or.rows[0];
-    const alreadyPaid=o.status==='PAID';
-    if(alreadyPaid){const tr=await c.query('SELECT * FROM tickets WHERE order_id=$1 ORDER BY id',[orderId]);if(tr.rows.length){await c.query('COMMIT');return tr.rows;}}
-    if(!alreadyPaid){const expected=Number(o.total_amount),grossExpected=customerTotalFor(expected),received=Number(sourceData.amount??expected);if(received!==expected&&received!==grossExpected)throw new Error('Montant de paiement différent du montant attendu.');if(sourceData.mode&&sourceData.mode!==(process.env.TCHIN_ENV||'test'))throw new Error('Mode de paiement non conforme.');if((process.env.TCHIN_ENV||'test')==='test')throw new Error('Paiement de test : aucun billet réel ne doit être délivré.');}
+    if(o.status==='PAID'){const tr=await c.query('SELECT * FROM tickets WHERE order_id=$1 ORDER BY id',[orderId]);await c.query('COMMIT');return tr.rows;}
+    const expected=Number(o.total_amount),grossExpected=customerTotalFor(expected),received=Number(sourceData.amount??expected);if(received!==expected&&received!==grossExpected)throw new Error('Montant de paiement différent du montant attendu.');if(sourceData.mode&&sourceData.mode!==(process.env.TCHIN_ENV||'test'))throw new Error('Mode de paiement non conforme.');if((process.env.TCHIN_ENV||'test')==='test')throw new Error('Paiement de test : aucun billet réel ne doit être délivré.');
     let cats=Array.isArray(o.ticket_categories)?o.ticket_categories:[];if(typeof o.ticket_categories==='string')cats=JSON.parse(o.ticket_categories);const cat=cats.find(x=>String(x.name).toLowerCase()===String(o.ticket_type).toLowerCase());const quantity=Math.max(1,Number(o.quantity||1));const maxPerOrder=Math.max(1,Number(cat?.max_per_order||10));if(quantity>maxPerOrder)throw new Error('Limite de billets par commande dépassée.');
     const soldCat=await c.query(`SELECT COUNT(*)::int n FROM tickets WHERE event_id=$1 AND LOWER(ticket_type)=LOWER($2)`,[o.event_id,o.ticket_type]);if(cat?.total_stock>0&&Number(soldCat.rows[0].n)+quantity>Number(cat.total_stock))throw new Error('Stock insuffisant au moment de la confirmation.');const sold=await c.query('SELECT COUNT(*)::int n FROM tickets WHERE event_id=$1',[o.event_id]);if(Number(o.capacity)>0&&Number(sold.rows[0].n)+quantity>Number(o.capacity))throw new Error('Événement complet au moment de la confirmation.');
     const perBase=Math.floor(Number(o.base_amount||0)/quantity);const splitTotal=Number(o.total_amount||0);const tickets=[];let allocated=0;
@@ -1050,9 +941,9 @@ async function handleTchinWebhook(req,res){
 }
 app.get('/api/webhooks/tchin',(req,res)=>res.status(200).send('Ticketora Tchin webhook ready. POST only for webhook delivery.'));
 
-app.get('/api/payments/:token/status',asyncRoute(async(req,res)=>{const token=clean(req.params.token,255);const or=await pool.query('SELECT o.*,e.title event_title FROM orders o JOIN events e ON e.id=o.event_id WHERE o.tchin_token=$1',[token]);if(!or.rows.length)return res.status(404).json({success:false,message:'Transaction introuvable.'});let o=or.rows[0];let td=await tchinRequest(`/payments/${encodeURIComponent(token)}/status`,{method:'GET',headers:{'Content-Type':'application/json'}});const status=td.status||td.data?.status||'pending';if(status==='completed'){try{const tickets=await fulfillOrder(o.id,{amount:td.amount??o.total_amount,mode:td.mode||process.env.TCHIN_ENV||o.tchin_mode,reference:td.reference||o.tchin_reference||null});o=(await pool.query('SELECT * FROM orders WHERE id=$1',[o.id])).rows[0];return res.json({success:true,status:'completed',paid:true,quantity:Number(o.quantity||tickets.length),tickets:tickets.map(ticket=>({code:ticket.code,event_title:ticket.event_title,event_date:ticket.event_date,event_location:ticket.event_location,ticket_type:ticket.ticket_type,customer_name:ticket.customer_name,customer_email:ticket.customer_email,customer_phone:ticket.customer_phone})),ticket:tickets[0]||null});}catch(e){return res.json({success:true,status:'completed',paid:false,message:e.message});}}const tr=await pool.query('SELECT code,event_title,event_date,event_location,ticket_type,customer_name,customer_email,customer_phone FROM tickets WHERE order_id=$1 ORDER BY id',[o.id]);res.json({success:true,status:o.status==='PAID'?'completed':status,paid:o.status==='PAID',quantity:Number(o.quantity||tr.rows.length||1),tickets:tr.rows,ticket:tr.rows[0]||null});}));
+app.get('/api/payments/:token/status',asyncRoute(async(req,res)=>{const token=clean(req.params.token,255);const or=await pool.query('SELECT o.*,e.title event_title FROM orders o JOIN events e ON e.id=o.event_id WHERE o.tchin_token=$1',[token]);if(!or.rows.length)return res.status(404).json({success:false,message:'Transaction introuvable.'});let o=or.rows[0];let td=await tchinRequest(`/payments/${encodeURIComponent(token)}/status`,{method:'GET',headers:{'Content-Type':'application/json'}});const status=td.status||td.data?.status||'pending';if(status==='completed'&&o.status!=='PAID'){try{const tickets=await fulfillOrder(o.id,{amount:td.amount??o.total_amount,mode:td.mode||process.env.TCHIN_ENV,reference:td.reference||null});o=(await pool.query('SELECT * FROM orders WHERE id=$1',[o.id])).rows[0];return res.json({success:true,status:'completed',paid:true,quantity:Number(o.quantity||tickets.length),tickets:tickets.map(ticket=>({code:ticket.code,event_title:ticket.event_title,event_date:ticket.event_date,event_location:ticket.event_location,ticket_type:ticket.ticket_type,customer_name:ticket.customer_name,customer_email:ticket.customer_email,customer_phone:ticket.customer_phone})),ticket:tickets[0]||null});}catch(e){return res.json({success:true,status:'completed',paid:false,message:e.message});}}const tr=await pool.query('SELECT code,event_title,event_date,event_location,ticket_type,customer_name,customer_email,customer_phone FROM tickets WHERE order_id=$1 ORDER BY id',[o.id]);res.json({success:true,status:o.status==='PAID'?'completed':status,paid:o.status==='PAID',quantity:Number(o.quantity||tr.rows.length||1),tickets:tr.rows,ticket:tr.rows[0]||null});}));
 
-app.get('/api/payments/reference/:reference/status',asyncRoute(async(req,res)=>{const reference=clean(req.params.reference,255);const or=await pool.query('SELECT o.*,e.title event_title FROM orders o JOIN events e ON e.id=o.event_id WHERE o.reference=$1',[reference]);if(!or.rows.length)return res.status(404).json({success:false,message:'Commande introuvable.'});let o=or.rows[0];if(o.status==='PAID'){const tr=await pool.query('SELECT code,event_title,event_date,event_location,ticket_type,customer_name,customer_email,customer_phone FROM tickets WHERE order_id=$1 ORDER BY id',[o.id]);if(tr.rows.length)return res.json({success:true,status:'completed',paid:true,quantity:Number(o.quantity||tr.rows.length||1),tickets:tr.rows,ticket:tr.rows[0]||null});}if(!o.tchin_token)return res.status(409).json({success:false,message:'Paiement Tchin non initialisé.'});let td=await tchinRequest(`/payments/${encodeURIComponent(o.tchin_token)}/status`,{method:'GET',headers:{'Content-Type':'application/json'}});const status=td.status||td.data?.status||'pending';if(status==='completed'){try{const tickets=await fulfillOrder(o.id,{amount:td.amount??td.data?.amount??o.total_amount,mode:td.mode||td.data?.mode||process.env.TCHIN_ENV||o.tchin_mode,reference:td.reference||td.data?.reference||o.tchin_reference||null});return res.json({success:true,status:'completed',paid:true,quantity:Number(o.quantity||tickets.length),tickets:tickets.map(ticket=>({code:ticket.code,event_title:ticket.event_title,event_date:ticket.event_date,event_location:ticket.event_location,ticket_type:ticket.ticket_type,customer_name:ticket.customer_name,customer_email:ticket.customer_email,customer_phone:ticket.customer_phone})),ticket:tickets[0]||null});}catch(e){return res.json({success:true,status:'completed',paid:false,message:e.message});}}res.json({success:true,status:o.status==='PAID'?'completed':status,paid:o.status==='PAID',ticket:null});}));
+app.get('/api/payments/reference/:reference/status',asyncRoute(async(req,res)=>{const reference=clean(req.params.reference,255);const or=await pool.query('SELECT o.*,e.title event_title FROM orders o JOIN events e ON e.id=o.event_id WHERE o.reference=$1',[reference]);if(!or.rows.length)return res.status(404).json({success:false,message:'Commande introuvable.'});let o=or.rows[0];if(o.status==='PAID'){const tr=await pool.query('SELECT code,event_title,event_date,event_location,ticket_type,customer_name,customer_email,customer_phone FROM tickets WHERE order_id=$1 ORDER BY id',[o.id]);return res.json({success:true,status:'completed',paid:true,quantity:Number(o.quantity||tr.rows.length||1),tickets:tr.rows,ticket:tr.rows[0]||null});}if(!o.tchin_token)return res.status(409).json({success:false,message:'Paiement Tchin non initialisé.'});let td=await tchinRequest(`/payments/${encodeURIComponent(o.tchin_token)}/status`,{method:'GET',headers:{'Content-Type':'application/json'}});const status=td.status||td.data?.status||'pending';if(status==='completed'&&o.status!=='PAID'){try{const tickets=await fulfillOrder(o.id,{amount:td.amount??td.data?.amount??o.total_amount,mode:td.mode||td.data?.mode||process.env.TCHIN_ENV,reference:td.reference||td.data?.reference||o.tchin_reference||null});return res.json({success:true,status:'completed',paid:true,quantity:Number(o.quantity||tickets.length),tickets:tickets.map(ticket=>({code:ticket.code,event_title:ticket.event_title,event_date:ticket.event_date,event_location:ticket.event_location,ticket_type:ticket.ticket_type,customer_name:ticket.customer_name,customer_email:ticket.customer_email,customer_phone:ticket.customer_phone})),ticket:tickets[0]||null});}catch(e){return res.json({success:true,status:'completed',paid:false,message:e.message});}}res.json({success:true,status:o.status==='PAID'?'completed':status,paid:o.status==='PAID',ticket:null});}));
 
 // ---------- BILLETS ----------
 app.get('/api/tickets/verify/:code',asyncRoute(async(req,res)=>{const code=clean(req.params.code,32).toUpperCase();const r=await pool.query('SELECT code,event_title,event_date,event_location,ticket_type,customer_name,used,used_at FROM tickets WHERE UPPER(code)=UPPER($1)',[code]);if(!r.rows.length)return res.status(404).json({success:false,status:'INVALID',message:'BILLET NON VALIDE'});const t=r.rows[0];res.json({success:true,status:t.used?'USED':'VALID',message:t.used?'BILLET DÉJÀ UTILISÉ':'BILLET VALIDE',ticket:t});}));
