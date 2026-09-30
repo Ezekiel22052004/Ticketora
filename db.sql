@@ -331,3 +331,60 @@ CREATE TABLE IF NOT EXISTS admin_credentials (
   password_hash TEXT NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+
+-- ============================================================
+-- CONCERT LIVE + MEETING
+-- ============================================================
+CREATE TABLE IF NOT EXISTS live_settings (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id=1),
+  price INTEGER NOT NULL DEFAULT 1000 CHECK (price >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO live_settings(id,price) VALUES(1,1000) ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS live_sessions (
+  id BIGSERIAL PRIMARY KEY,
+  event_id BIGINT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  org_id BIGINT REFERENCES organizers(id) ON DELETE CASCADE,
+  room_name VARCHAR(180) NOT NULL UNIQUE,
+  status VARCHAR(20) NOT NULL DEFAULT 'READY' CHECK(status IN ('READY','LIVE','ENDED')),
+  started_at TIMESTAMPTZ,
+  ended_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_live_sessions_status ON live_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_live_sessions_org ON live_sessions(org_id);
+CREATE INDEX IF NOT EXISTS idx_live_sessions_event ON live_sessions(event_id);
+
+CREATE TABLE IF NOT EXISTS live_payments (
+  id BIGSERIAL PRIMARY KEY,
+  live_id BIGINT NOT NULL REFERENCES live_sessions(id) ON DELETE CASCADE,
+  reference VARCHAR(60) NOT NULL UNIQUE,
+  customer_name VARCHAR(255) NOT NULL,
+  customer_email VARCHAR(255) NOT NULL,
+  amount INTEGER NOT NULL CHECK(amount >= 0),
+  organizer_amount INTEGER NOT NULL DEFAULT 0,
+  admin_amount INTEGER NOT NULL DEFAULT 0,
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','PAID','FAILED','CANCELLED')),
+  tchin_token VARCHAR(255) UNIQUE,
+  tchin_reference VARCHAR(255),
+  tchin_status VARCHAR(30),
+  tchin_mode VARCHAR(30),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  paid_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_live_payments_live ON live_payments(live_id);
+CREATE INDEX IF NOT EXISTS idx_live_payments_status ON live_payments(status);
+
+CREATE TABLE IF NOT EXISTS meeting_sessions (
+  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES organizers(id) ON DELETE CASCADE,
+  title VARCHAR(255) NOT NULL,
+  room_name VARCHAR(180) NOT NULL UNIQUE,
+  access_key VARCHAR(120) NOT NULL UNIQUE,
+  status VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK(status IN ('OPEN','CLOSED')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  closed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_meeting_sessions_org ON meeting_sessions(org_id);

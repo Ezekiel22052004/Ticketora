@@ -13,6 +13,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
     <style>
         html{scroll-behavior:smooth}
         .pwa-install-btn{position:fixed;right:16px;bottom:18px;z-index:120;display:none;align-items:center;gap:9px;background:#06132f;color:#fff;border:1px solid rgba(249,115,22,.45);box-shadow:0 14px 35px rgba(0,0,0,.22);border-radius:999px;padding:12px 16px;font-weight:800;font-size:13px}
@@ -64,6 +65,9 @@
         .public-ad-card{min-width:min(88vw,720px);scroll-snap-align:start;border-radius:14px;overflow:hidden;background:#fff;display:block;box-shadow:0 8px 24px rgba(0,0,0,.12)}.public-ad-card img{display:block;width:100%;height:86px;object-fit:cover}.public-ad-card{transition:transform .2s ease,box-shadow .2s ease}.public-ad-card:hover{transform:translateY(-2px);box-shadow:0 14px 32px rgba(0,0,0,.16)}.public-ad-fallback{padding:20px;color:#071a3b;font-weight:900}
         @media(max-width:767px){.access-card{padding:15px!important}.public-ad-card{min-width:92vw}.public-ad-card img{height:72px}}
 </style>
+<style>
+.pay-slider{position:relative;width:100%;height:58px;border-radius:999px;background:#0f213d;border:1px solid #29466a;overflow:hidden;user-select:none;touch-action:none;cursor:grab;box-shadow:inset 0 0 0 1px rgba(255,255,255,.03)}.pay-slider.pay-slider-orange{background:#10213b;border-color:#f97316}.pay-slider-track{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-weight:900;font-size:14px;letter-spacing:.02em}.pay-slider-handle{position:absolute;left:3px;top:3px;width:52px;height:52px;border-radius:50%;background:#f97316;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 7px 20px rgba(249,115,22,.28);transition:background .2s}.pay-slider.dragging{cursor:grabbing}.pay-slider.completed .pay-slider-handle{background:#22c55e}.pay-slider.completed .pay-slider-track{color:#22c55e}.live-video{width:100%;aspect-ratio:16/9;background:#000;border-radius:20px;overflow:hidden}.live-video video{width:100%;height:100%;object-fit:contain}.live-card{background:#fff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;box-shadow:0 8px 25px rgba(15,23,42,.06)}
+</style>
 </head>
 <body class="bg-white text-slate-900 min-h-screen">
     <button id="pwa-install" class="pwa-install-btn" type="button"><i class="fa-solid fa-download"></i><span>Installer Ticketora</span></button>
@@ -77,7 +81,7 @@
 
         <div class="hidden md:flex items-center gap-7">
             <button onclick="showSection('client-events');document.getElementById('events-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Événements</button>
-            <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Cagnottes</button><button onclick="showMyTickets()" class="nav-link text-sm font-bold">Mes billets</button><button onclick="document.getElementById('faq').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">FAQ</button>
+            <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Cagnottes</button><button onclick="showConcertLives()" class="nav-link text-sm font-bold">Concert Live</button><button onclick="showMyTickets()" class="nav-link text-sm font-bold">Mes billets</button><button onclick="document.getElementById('faq').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">FAQ</button>
             <button onclick="openParticipantLogin()" class="nav-link text-sm font-bold">Connexion</button>
             <a href="organisateur.html" class="nav-link text-sm font-bold">Organisateur</a>
             <a href="admin.html" class="nav-link text-sm font-bold">Administration</a>
@@ -91,7 +95,7 @@
 
     <div id="public-mobile-menu" class="hidden md:hidden fixed top-[80px] left-0 right-0 z-40 bg-[#06132f] border-t border-white/10 px-6 py-5 space-y-3 shadow-xl">
         <button onclick="showSection('client-events');document.getElementById('events-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Événements</button>
-        <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Cagnottes</button><button onclick="showMyTickets();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Mes billets</button>
+        <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Cagnottes</button><button onclick="showConcertLives();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Concert Live</button><button onclick="showMyTickets();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Mes billets</button>
         <button onclick="openParticipantLogin();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Connexion / Mes tickets</button>
         <a href="organisateur.html" onclick="togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Espace organisateur</a>
         <a href="admin.html" onclick="togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Administration</a>
@@ -184,14 +188,20 @@
     </section>
 
     <!-- CAGNOTTES -->
-    <section id="cagnottes-public" class="bg-white px-6 md:px-8 py-14">
+    <section id="concert-live-public" class="hidden soft-section px-6 md:px-8 py-12">
+<div class="max-w-7xl mx-auto">
+<div class="flex items-end justify-between gap-5 mb-7"><div><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Ticketora</p><h2 class="text-3xl font-black text-[#071a3b]">Concert Live</h2><p class="text-slate-500 font-semibold">Regardez les événements actuellement en direct. Le paiement est nécessaire avant l'accès vidéo.</p></div><button onclick="loadConcertLives()" class="bg-[#071a3b] text-white font-bold px-4 py-2 rounded-xl">Actualiser</button></div>
+<div id="concert-live-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+</div></section>
+
+<section id="cagnottes-public" class="bg-white px-6 md:px-8 py-14">
         <div class="max-w-7xl mx-auto">
             <div class="flex items-end justify-between gap-5 mb-7"><div><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Ticketora</p><h2 class="text-3xl font-black text-[#071a3b]">Cagnottes</h2><p class="text-slate-500 font-semibold">Soutenez les projets et initiatives qui comptent.</p></div></div>
             <div id="public-cagnottes-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
             <div id="public-cagnottes-empty" class="rounded-3xl bg-slate-50 border border-slate-200 p-8 md:p-12 text-center"><div class="w-14 h-14 mx-auto rounded-2xl bg-orange-50 text-[#F97316] flex items-center justify-center text-xl"><i class="fa-solid fa-hand-holding-heart"></i></div><h3 class="text-xl font-black text-[#071a3b] mt-4">Aucune cagnotte active</h3><p class="text-slate-500 max-w-xl mx-auto mt-2 font-medium">Les prochaines campagnes de collecte apparaîtront ici.</p></div>
         </div>
     </section>
-    <div id="modal-cagnotte" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[75]"><div class="bg-white w-full max-w-md rounded-3xl p-7 relative"><button onclick="closeCagnotteModal()" class="absolute top-4 right-4 text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button><div class="w-12 h-12 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-hand-holding-heart"></i></div><h3 id="cag-modal-title" class="text-2xl font-black text-[#071a3b] mt-4"></h3><p id="cag-modal-desc" class="text-sm text-slate-500 mt-2"></p><div class="mt-5 space-y-3"><input id="cag-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Votre nom (facultatif)"><input id="cag-email" type="email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Email (facultatif)"><input id="cag-amount" type="number" min="100" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-bold" placeholder="Montant de votre contribution en FCFA"><button onclick="contributeCagnotte()" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Contribuer avec Tchin</button><p class="text-[11px] text-slate-400">Le montant n’est pas fixé par la cagnotte : vous choisissez librement votre contribution (minimum 100 FCFA pour le paiement).</p></div></div></div>
+    <div id="modal-cagnotte" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[75]"><div class="bg-white w-full max-w-md rounded-3xl p-7 relative"><button onclick="closeCagnotteModal()" class="absolute top-4 right-4 text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button><div class="w-12 h-12 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-hand-holding-heart"></i></div><h3 id="cag-modal-title" class="text-2xl font-black text-[#071a3b] mt-4"></h3><p id="cag-modal-desc" class="text-sm text-slate-500 mt-2"></p><div class="mt-5 space-y-3"><input id="cag-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Votre nom (facultatif)"><input id="cag-email" type="email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Email (facultatif)"><input id="cag-amount" type="number" min="100" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-bold" placeholder="Montant de votre contribution en FCFA"><div id="cag-payment-slider" class="pay-slider pay-slider-orange" data-pay-action="contributeCagnotte" role="button" tabindex="0" aria-label="Glisser pour contribuer"><span class="pay-slider-track">Glisser pour contribuer</span><span class="pay-slider-handle"><i class="fa-solid fa-arrow-right"></i></span></div><p class="text-[11px] text-slate-400">Le montant n’est pas fixé par la cagnotte : vous choisissez librement votre contribution (minimum 100 FCFA pour le paiement).</p></div></div></div>
 
     <!-- MES BILLETS -->
     <section id="client-verify" class="hidden bg-[#071a3b] px-6 py-14">
@@ -223,7 +233,7 @@
                 <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-xl px-4 py-3"><div><p class="text-xs font-bold text-slate-300 uppercase">Quantité</p><p id="buy-stock-note" class="text-[11px] text-slate-500 mt-1"></p></div><div class="flex items-center gap-3"><button type="button" onclick="changeBuyQuantity(-1)" class="w-9 h-9 rounded-lg bg-slate-700 text-white font-black">−</button><span id="buy-quantity" class="w-8 text-center font-black text-white">1</span><button type="button" onclick="changeBuyQuantity(1)" class="w-9 h-9 rounded-lg bg-slate-700 text-white font-black">+</button></div></div>
                 <div id="buy-total-box" class="rounded-xl bg-slate-900 border border-slate-700 p-4 text-sm"></div>
                 <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">Code Promo (Optionnel)</label><div class="flex gap-2"><input type="text" id="buy-promo" placeholder="Ex: JEUNES10" class="uppercase w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white"><button type="button" onclick="applyPromoCode()" class="bg-slate-700 text-xs px-3 py-2 rounded-xl font-bold hover:bg-slate-600 text-white">Appliquer</button></div><div id="buy-promo-message" class="text-xs mt-2"></div></div>
-                <button onclick="processPayment()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2"><i class="fa-solid fa-credit-card"></i> Payer</button>
+                <div id="ticket-payment-slider" class="pay-slider" data-pay-action="processPayment" role="button" tabindex="0" aria-label="Glisser pour payer"><span class="pay-slider-track">Glisser pour payer</span><span class="pay-slider-handle"><i class="fa-solid fa-arrow-right"></i></span></div>
             </div>
             <div id="buy-step-2" class="hidden space-y-4 text-center"></div>
         </div>
@@ -358,5 +368,7 @@ document.getElementById('pwa-install')?.addEventListener('click',async()=>{if(!d
 window.addEventListener('appinstalled',()=>document.getElementById('pwa-install')?.classList.remove('show'));
 if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(console.error));
 </script>
+
+<div id="modal-live-watch" class="hidden fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 z-[95]"><div class="bg-[#07152f] text-white w-full max-w-5xl rounded-3xl p-5 relative border border-slate-700"><button onclick="closeLiveWatch()" class="absolute top-3 right-3 text-slate-300 hover:text-white z-10"><i class="fa-solid fa-xmark text-xl"></i></button><div id="live-watch-box" class="pt-2"></div></div></div>
 </body>
 </html>
