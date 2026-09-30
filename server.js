@@ -978,6 +978,17 @@ function pickWebhook(req){
     customer:get('customer'), method:get('method')
   };
 }
+function tchinSignatureProblem(p){
+  const ts=String(p.timestamp||'').trim();
+  if(!process.env.TCHIN_PRIVATE_KEY)return 'TCHIN_PRIVATE_KEY absente sur le serveur';
+  if(!/^\d+$/.test(ts)||!p.reference||!p.token||!p.status||p.amount===undefined||p.net===undefined||!p.mode||!p.signature)return 'champs manquants dans le webhook';
+  const n=Number(ts);
+  const stamp=n<1e12?n*1000:n;
+  if(!Number.isFinite(stamp))return 'timestamp invalide';
+  const skew=Math.round((Date.now()-stamp)/1000);
+  if(Math.abs(skew)>5*60)return 'webhook trop ancien ou horloge décalée ('+skew+' s) - probablement un renvoi tardif de Tchin';
+  return validTchinSignature(p)?null:'signature différente : TCHIN_PRIVATE_KEY incorrecte ou format de signature différent';
+}
 function validTchinSignature(p){
   const ts=String(p.timestamp||'').trim();
   if(!/^\d+$/.test(ts)||!p.reference||!p.token||!p.status||p.amount===undefined||p.net===undefined||!p.mode||!p.signature)return false;
@@ -994,7 +1005,15 @@ async function handleTchinWebhook(req,res){
   const p=pickWebhook(req);
   console.log('[TCHIN WEBHOOK] received',JSON.stringify({status:p.status,reference:p.reference,token:p.token,amount:p.amount,net:p.net,mode:p.mode,timestamp:p.timestamp,hasSignature:!!p.signature}));
   if(!process.env.TCHIN_PRIVATE_KEY||!validTchinSignature(p)){
-    console.error('[TCHIN WEBHOOK] invalid signature or payload');
+    console.error('[TCHIN WEBHOOK] invalid signature or payload ->',tchinSignatureProblem(p));
+    // Cagnottes: the webhook data is not trusted, so ask Tchin's authenticated API for the real payment status instead.
+    try{
+      if(p.token){
+        await ensureCagnotteTables();
+        const cx=await pool.query('SELECT id FROM contributions WHERE tchin_token=$1 LIMIT 1',[String(p.token)]);
+        if(cx.rows.length){await syncPendingCagnotteContributions(null,String(p.token));return res.status(200).send('ok');}
+      }
+    }catch(e){console.error('[TCHIN WEBHOOK] cagnotte fallback failed:',e.message);}
     return res.status(401).send('invalid signature');
   }
   try{
@@ -1015,8 +1034,9 @@ async function handleTchinWebhook(req,res){
       return res.status(200).send('ok');
     }
     // Live Concert payments are handled separately from ticket/cagnotte payments.
-    await ensureLiveTables();
-    const lr=await pool.query('SELECT * FROM live_payments WHERE tchin_token=$1 OR reference=$2 LIMIT 1',[p.token,p.reference]);
+    let lr={rows:[]};
+    try{await ensureLiveTables();lr=await pool.query('SELECT * FROM live_payments WHERE tchin_token=$1 OR reference=$2 LIMIT 1',[p.token,p.reference]);}
+    catch(e){console.error('[TCHIN WEBHOOK] live lookup failed, continuing with cagnotte:',e.message);}
     if(lr.rows.length){
       const lp=lr.rows[0];
       await pool.query('UPDATE live_payments SET tchin_status=$1,tchin_reference=COALESCE($2,tchin_reference),tchin_mode=COALESCE($3,tchin_mode) WHERE id=$4',[p.status,p.reference,p.mode,lp.id]);
@@ -1453,8 +1473,43 @@ app.post('/api/admin/cagnottes/:id/stop',requireAdmin,asyncRoute(async(req,res)=
 app.delete('/api/admin/cagnottes/:id',requireAdmin,asyncRoute(async(req,res)=>{await ensureCagnotteTables();const r=await pool.query("DELETE FROM cagnottes WHERE id=$1 AND status<>'PUBLIE' RETURNING id",[req.params.id]);if(!r.rows.length)return res.status(400).json({success:false,message:'Une cagnotte publiée ne peut pas être supprimée.'});res.json({success:true});}));
 app.get('/api/admin/cagnottes/:id/contributions',requireAdmin,asyncRoute(async(req,res)=>{await ensureCagnotteTables();const r=await pool.query(`SELECT id,contributor_name,contributor_email,amount,status,reference,created_at,paid_at FROM contributions WHERE cagnotte_id=$1 AND status='PAYE' ORDER BY id ASC`,[req.params.id]);const total=r.rows.reduce((s,x)=>s+Number(x.amount||0),0);res.json({success:true,contributions:r.rows,total_amount:total});}));
 app.get('/api/admin/cagnottes/account',requireAdmin,asyncRoute(async(req,res)=>{await ensureCagnotteTables();const r=await pool.query(`SELECT COALESCE(SUM(amount),0)::int total FROM contributions WHERE status='PAYE'`);res.json({success:true,total_amount:Number(r.rows[0].total)});}));
-app.post('/api/cagnottes/:id/contribute',asyncRoute(async(req,res)=>{await ensureCagnotteTables();const id=Number(req.params.id),name=clean(req.body.name,255),email=clean(req.body.email,255).toLowerCase(),amount=positiveInt(req.body.amount);if(!id||!amount||amount<200)return res.status(400).json({success:false,message:'Choisissez un montant d’au moins 200 FCFA.'});const c=await pool.connect();try{await c.query('BEGIN');const cg=await c.query("SELECT * FROM cagnottes WHERE id=$1 AND status='PUBLIE' FOR UPDATE",[id]);if(!cg.rows.length)throw new Error('Cagnotte indisponible.');const target=Number(cg.rows[0].target_amount||0);if(target>0){const paid=Number((await c.query("SELECT COALESCE(SUM(amount),0)::int AS t FROM contributions WHERE cagnotte_id=$1 AND status='PAYE'",[id])).rows[0].t);const remaining=target-paid;if(remaining<200)throw new Error('L’objectif de cette cagnotte est atteint. Merci pour votre générosité !');if(amount>remaining)throw new Error(`Il ne reste que ${remaining} FCFA pour atteindre l’objectif de cette cagnotte. Choisissez un montant inférieur ou égal à ${remaining} FCFA.`);}const ref='CAG-'+crypto.randomBytes(5).toString('hex').toUpperCase();await c.query('INSERT INTO contributions(cagnotte_id,contributor_name,contributor_email,amount,reference,user_id) VALUES($1,$2,$3,$4,$5,$6)',[id,name||'Anonyme',email||null,amount,ref,req.session?.user?.role==='PARTICIPANT'?req.session.user.id:null]);await c.query('COMMIT');const returnUrl=process.env.TCHIN_RETURN_URL||`${FRONTEND_URL}/?cagnotte=return`;const cancelUrl=process.env.TCHIN_CANCEL_URL||`${FRONTEND_URL}/?cagnotte=cancel`;const callback=process.env.TCHIN_CALLBACK_URL||`${req.protocol}://${req.get('host')}/api/webhooks/tchin`;const td=await tchinRequest('/payments',{method:'POST',body:JSON.stringify({amount,description:`Ticketora Cagnotte ${ref} - ${cg.rows[0].title}`,env:process.env.TCHIN_ENV||'test',return_url:returnUrl,cancel_url:cancelUrl,callback_url:callback,fees_on_customer:true})});await pool.query('UPDATE contributions SET tchin_token=$1,tchin_status=\'pending\',tchin_mode=$2 WHERE reference=$3',[td.token,process.env.TCHIN_ENV||'test',ref]);res.json({success:true,reference:ref,token:td.token,payment_url:td.payment_url,amount});}catch(e){try{await c.query('ROLLBACK')}catch{};res.status(400).json({success:false,message:e.message});}finally{c.release();}}));
+app.post('/api/cagnottes/:id/contribute',asyncRoute(async(req,res)=>{await ensureCagnotteTables();const id=Number(req.params.id),name=clean(req.body.name,255),email=clean(req.body.email,255).toLowerCase(),amount=positiveInt(req.body.amount);if(!id||!amount||amount<200)return res.status(400).json({success:false,message:'Choisissez un montant d’au moins 200 FCFA.'});const c=await pool.connect();try{await c.query('BEGIN');const cg=await c.query("SELECT * FROM cagnottes WHERE id=$1 AND status='PUBLIE' FOR UPDATE",[id]);if(!cg.rows.length)throw new Error('Cagnotte indisponible.');const target=Number(cg.rows[0].target_amount||0);if(target>0){const paid=Number((await c.query("SELECT COALESCE(SUM(amount),0)::int AS t FROM contributions WHERE cagnotte_id=$1 AND status='PAYE'",[id])).rows[0].t);const remaining=target-paid;if(remaining<200)throw new Error('L’objectif de cette cagnotte est atteint. Merci pour votre générosité !');if(amount>remaining)throw new Error(`Il ne reste que ${remaining} FCFA pour atteindre l’objectif de cette cagnotte. Choisissez un montant inférieur ou égal à ${remaining} FCFA.`);}const ref='CAG-'+crypto.randomBytes(5).toString('hex').toUpperCase();await c.query('INSERT INTO contributions(cagnotte_id,contributor_name,contributor_email,amount,reference,user_id) VALUES($1,$2,$3,$4,$5,$6)',[id,name||'Anonyme',email||null,amount,ref,req.session?.user?.role==='PARTICIPANT'?req.session.user.id:null]);await c.query('COMMIT');const returnBase=process.env.TCHIN_RETURN_URL||`${FRONTEND_URL}/?cagnotte=return`;const cancelBase=process.env.TCHIN_CANCEL_URL||`${FRONTEND_URL}/?cagnotte=cancel`;const returnUrl=`${returnBase}${returnBase.includes('?')?'&':'?'}reference=${encodeURIComponent(ref)}`;const cancelUrl=`${cancelBase}${cancelBase.includes('?')?'&':'?'}reference=${encodeURIComponent(ref)}`;const callback=process.env.TCHIN_CALLBACK_URL||`${req.protocol}://${req.get('host')}/api/webhooks/tchin`;const td=await tchinRequest('/payments',{method:'POST',body:JSON.stringify({amount,description:`Ticketora Cagnotte ${ref} - ${cg.rows[0].title}`,env:process.env.TCHIN_ENV||'test',return_url:returnUrl,cancel_url:cancelUrl,callback_url:callback,fees_on_customer:true})});await pool.query('UPDATE contributions SET tchin_token=$1,tchin_status=\'pending\',tchin_mode=$2 WHERE reference=$3',[td.token,process.env.TCHIN_ENV||'test',ref]);res.json({success:true,reference:ref,token:td.token,payment_url:td.payment_url,amount});}catch(e){try{await c.query('ROLLBACK')}catch{};res.status(400).json({success:false,message:e.message});}finally{c.release();}}));
 app.get('/api/cagnottes/contributions/:token/status',asyncRoute(async(req,res)=>{await ensureCagnotteTables();const token=clean(req.params.token,255);const r=await pool.query('SELECT c.*,g.title FROM contributions c JOIN cagnottes g ON g.id=c.cagnotte_id WHERE c.tchin_token=$1',[token]);if(!r.rows.length)return res.status(404).json({success:false,message:'Contribution introuvable.'});const c=r.rows[0];const td=await tchinRequest(`/payments/${encodeURIComponent(token)}/status`,{method:'GET'});const status=td.status||td.data?.status||c.tchin_status||'pending';if(status==='completed'&&c.status!=='PAYE'&&String(process.env.TCHIN_ENV||'test')!=='test'){const upd=await pool.query("UPDATE contributions SET status='PAYE',paid_at=NOW(),tchin_status='completed',tchin_reference=COALESCE($1,tchin_reference),tchin_mode=COALESCE($2,tchin_mode) WHERE id=$3 AND status<>'PAYE' RETURNING id",[td.reference||null,td.mode||null,c.id]);if(upd.rows.length)await pool.query('UPDATE cagnottes SET total_amount=total_amount+$1,updated_at=NOW() WHERE id=$2',[c.amount,c.cagnotte_id]);const fresh=await pool.query('SELECT c.reference,c.amount,c.contributor_name,c.contributor_email,c.created_at,c.paid_at,c.status,g.title FROM contributions c JOIN cagnottes g ON g.id=c.cagnotte_id WHERE c.id=$1',[c.id]);return res.json({success:true,status:'completed',paid:true,contribution:fresh.rows[0]||c});}res.json({success:true,status,paid:c.status==='PAYE',contribution:c.status==='PAYE'?{reference:c.reference,amount:c.amount,contributor_name:c.contributor_name,contributor_email:c.contributor_email,created_at:c.created_at,paid_at:c.paid_at,title:c.title}:null});}));
+
+// ---------- RÉCONCILIATION DES COTISATIONS (filet de sécurité si le webhook Tchin n'arrive pas) ----------
+async function syncPendingCagnotteContributions(details,onlyToken){
+  if(!process.env.TCHIN_PRIVATE_KEY||!process.env.TCHIN_PUBLIC_KEY){console.error('[CAGNOTTE SYNC] TCHIN_PUBLIC_KEY / TCHIN_PRIVATE_KEY manquantes');if(details)details.push({problem:'TCHIN_PUBLIC_KEY ou TCHIN_PRIVATE_KEY manquante sur le serveur'});return 0;}
+  if(String(process.env.TCHIN_ENV||'test')==='test'){console.error('[CAGNOTTE SYNC] TCHIN_ENV vaut test (ou est absent): rien n est confirmé');if(details)details.push({problem:'TCHIN_ENV vaut test ou est absent sur le serveur : mettre TCHIN_ENV=live'});return 0;}
+  let done=0;
+  try{
+    await ensureCagnotteTables();
+    const r=onlyToken
+      ?await pool.query("SELECT * FROM contributions WHERE status='EN_ATTENTE' AND tchin_token=$1 LIMIT 1",[onlyToken])
+      :await pool.query("SELECT * FROM contributions WHERE status='EN_ATTENTE' AND tchin_token IS NOT NULL AND created_at>NOW()-INTERVAL '14 days' ORDER BY id DESC LIMIT 50");
+    for(const c of r.rows){
+      try{
+        const td=await tchinRequest(`/payments/${encodeURIComponent(c.tchin_token)}/status`,{method:'GET'});
+        const status=String(td.status||td.data?.status||'').toLowerCase();
+        const mode=td.mode||td.data?.mode||null;
+        if(details)details.push({reference:c.reference,amount:c.amount,tchin_status:status||null,tchin_mode:mode,tchin_amount:td.amount??td.data?.amount??null,raw_keys:Object.keys(td||{})});
+        else if(status&&status!=='pending')console.log('[CAGNOTTE SYNC]',c.reference,'tchin status =',status,'mode =',mode);
+        if(status==='completed'){
+          if(mode&&String(mode)!==String(process.env.TCHIN_ENV||'test'))continue;
+          const amt=Number(td.amount??td.data?.amount??c.amount);
+          if(Number.isFinite(amt)&&amt<Number(c.amount)){console.error('[CAGNOTTE SYNC] amount too low',c.reference,amt,c.amount);continue;}
+          const u=await pool.query("UPDATE contributions SET status='PAYE',paid_at=NOW(),tchin_status='completed',tchin_reference=COALESCE($1,tchin_reference),tchin_mode=COALESCE($2,tchin_mode) WHERE id=$3 AND status<>'PAYE' RETURNING cagnotte_id,amount",[td.reference||td.data?.reference||null,mode,c.id]);
+          if(u.rows.length){await pool.query('UPDATE cagnottes SET total_amount=total_amount+$1,updated_at=NOW() WHERE id=$2',[u.rows[0].amount,u.rows[0].cagnotte_id]);done++;console.log('[CAGNOTTE SYNC] contribution confirmed',c.reference);}
+        }else if(['failed','cancelled'].includes(status)){
+          await pool.query("UPDATE contributions SET status='ANNULE',tchin_status=$1 WHERE id=$2 AND status<>'PAYE'",[status,c.id]);
+        }
+      }catch(e){console.error('[CAGNOTTE SYNC]',c.reference,e.message);if(details)details.push({reference:c.reference,amount:c.amount,error:e.message});}
+    }
+  }catch(e){console.error('[CAGNOTTE SYNC] error',e.message);}
+  return done;
+}
+async function adminCagnotteSync(req,res){const details=[];const confirmed=await syncPendingCagnotteContributions(details);res.json({success:true,confirmed,message:confirmed?`${confirmed} cotisation(s) confirmée(s).`:'Aucune nouvelle cotisation à confirmer.',details});}
+app.post('/api/admin/cagnottes/sync',requireAdmin,asyncRoute(adminCagnotteSync));
+app.get('/api/admin/cagnottes/sync',requireAdmin,asyncRoute(adminCagnotteSync));
 
 // ---------- GÉNÉRATION DE BILLETS PAR ORGANISATEUR ----------
 async function requireTicketGeneratorAuth(req,res,next){
@@ -1653,4 +1708,4 @@ app.use(asyncRoute(async(req,res,next)=>{
 app.use(express.static(__dirname));
 app.use((err,req,res,next)=>{console.error(err);if(res.headersSent)return next(err);if(err?.type==='entity.too.large')return res.status(413).json({success:false,message:'Fichier ou requête trop volumineux.'});res.status(500).json({success:false,message:'Erreur interne du serveur.'});});
 
-app.listen(PORT,async()=>{try{await ensureEventImageColumn();await ensureAdminPayoutTable();await ensurePayoutTchinColumns();await ensureChatTable();await ensureScannerTable();await ensureCagnotteTables();await ensurePromoTables();await ensureV3Tables();await ensureV7MultiTicketTables();await ensureOrganizerGeneratedTicketColumns();await ensureTicketDownloadTable();await ensureAdminCredentials();await ensureSiteAccessTable();await ensureLiveTables();console.log(`Ticketora API sur http://localhost:${PORT}`);setInterval(syncPendingTchinPayouts,120000);}catch(e){console.error('Initialisation base admin retraits:',e.message);console.log(`Ticketora API sur http://localhost:${PORT}`);}});
+app.listen(PORT,async()=>{try{await ensureEventImageColumn();await ensureAdminPayoutTable();await ensurePayoutTchinColumns();await ensureChatTable();await ensureScannerTable();await ensureCagnotteTables();await ensurePromoTables();await ensureV3Tables();await ensureV7MultiTicketTables();await ensureOrganizerGeneratedTicketColumns();await ensureTicketDownloadTable();await ensureAdminCredentials();await ensureSiteAccessTable();await ensureLiveTables();console.log(`Ticketora API sur http://localhost:${PORT}`);setInterval(syncPendingTchinPayouts,120000);syncPendingCagnotteContributions();setInterval(syncPendingCagnotteContributions,60000);}catch(e){console.error('Initialisation base admin retraits:',e.message);console.log(`Ticketora API sur http://localhost:${PORT}`);}});
