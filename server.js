@@ -1,6 +1,4 @@
 require('dotenv').config({ path: require('path').join(__dirname,'.env') });
-// Tchin en mode LIVE : forcé ici pour que fulfillOrder, les webhooks et les cagnottes délivrent bien les billets/paiements réels.
-process.env.TCHIN_ENV='live';
 const express=require('express');
 const cors=require('cors');
 const helmet=require('helmet');
@@ -1708,23 +1706,43 @@ app.get('/api/cagnottes/contributions/verify/:reference',asyncRoute(async(req,re
 app.get('/api/tickets/:code/qr',asyncRoute(async(req,res)=>{const code=clean(req.params.code,32).toUpperCase();const r=await pool.query('SELECT 1 FROM tickets WHERE code=$1',[code]);if(!r.rows.length)return res.status(404).end();const png=await QRCode.toBuffer(code,{width:500,margin:1,errorCorrectionLevel:'M'});res.type('png').send(png);}));
 
 app.get('/api/tickets/:code/image',asyncRoute(async(req,res)=>{
-  await ensureTicketDownloadTable();
   const code=clean(req.params.code,32).toUpperCase();
   const r=await pool.query('SELECT t.*,e.org_id AS event_org_id FROM tickets t JOIN events e ON e.id=t.event_id WHERE t.code=$1',[code]);
   if(!r.rows.length)return res.status(404).end();
   const ticket=r.rows[0], role=req.session?.user?.role||null, uid=req.session?.user?.id||null;
-  if(req.query.download==='1'){
-    if(role==='ORGANIZER' && String(ticket.org_id)!==String(uid)) return res.status(403).json({success:false,message:'Billet non autorisé pour cet organisateur.'});
-    if(role==='PARTICIPANT'){
-      const own=await pool.query(`SELECT 1 FROM orders o WHERE o.id=$1 AND (o.user_id=$2 OR LOWER(o.customer_email)=(SELECT LOWER(email) FROM participant_users WHERE id=$2)) LIMIT 1`,[ticket.order_id,uid]);
-      if(!own.rows.length)return res.status(403).json({success:false,message:'Ce billet ne vous appartient pas.'});
-    }
-    await pool.query('INSERT INTO ticket_downloads(ticket_id,actor_type,actor_id,actor_email,ip_address,user_agent) VALUES($1,$2,$3,$4,$5,$6)',[
-      ticket.id,role,uid?String(uid):null,req.session?.user?.email||null,clean(req.ip,100),clean(req.get('user-agent'),1000)
-    ]);
+  const wantsDownload=req.query.download==='1';
+  if(wantsDownload){
+    // Le suivi des téléchargements ne doit JAMAIS empêcher la remise du billet.
+    // (L'image est déjà accessible sans ?download=1 ; on ne bloque donc plus avec un 403,
+    // on évite seulement de comptabiliser un téléchargement qui n'est pas celui du propriétaire.)
+    try{
+      await ensureTicketDownloadTable();
+      let allowed=true;
+      if(role==='ORGANIZER' && String(ticket.org_id)!==String(uid)) allowed=false;
+      if(role==='PARTICIPANT'){
+        const own=await pool.query(`SELECT 1 FROM orders o WHERE o.id=$1 AND (o.user_id=$2 OR LOWER(o.customer_email)=(SELECT LOWER(email) FROM participant_users WHERE id=$2)) LIMIT 1`,[ticket.order_id,uid]);
+        if(!own.rows.length) allowed=false;
+      }
+      if(allowed){
+        await pool.query('INSERT INTO ticket_downloads(ticket_id,actor_type,actor_id,actor_email,ip_address,user_agent) VALUES($1,$2,$3,$4,$5,$6)',[
+          ticket.id,role,uid?String(uid):null,req.session?.user?.email||null,clean(req.ip,100),clean(req.get('user-agent'),1000)
+        ]);
+      }
+    }catch(e){console.error('[TICKET DOWNLOAD LOG]',e.message);}
   }
-  const png=await buildTicketImage(ticket);
-  res.set('Cache-Control','no-store, max-age=0');res.type('png').send(png);
+  let png;
+  try{
+    png=await buildTicketImage(ticket);
+  }catch(e){
+    console.error('[TICKET IMAGE]',code,e.message);
+    return res.status(500).json({success:false,message:'Impossible de générer le billet pour le moment.'});
+  }
+  res.set('Cache-Control','no-store, max-age=0');
+  if(wantsDownload){
+    const safeName=String(ticket.ticket_number||ticket.code||code).replace(/[^A-Za-z0-9_-]/g,'');
+    res.set('Content-Disposition',`attachment; filename="billet-${safeName||'ticket'}.png"`);
+  }
+  res.type('png').send(png);
 }));
 
 
