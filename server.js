@@ -848,7 +848,7 @@ app.post('/api/payments/create',asyncRoute(async(req,res)=>{
 }));
 async function fulfillOrder(orderId,sourceData={}){
   const c=await pool.connect();try{await c.query('BEGIN');
-    const or=await c.query('SELECT o.*,e.title event_title,e.date event_date,e.location event_location,e.org_id,e.capacity,e.ticket_categories,org.is_partner,org.partner_rate_under_5000,org.partner_rate_from_5000 FROM orders o JOIN events e ON e.id=o.event_id LEFT JOIN organizers org ON org.id=e.org_id WHERE o.id=$1 FOR UPDATE',[orderId]);if(!or.rows.length)throw new Error('Commande introuvable.');const o=or.rows[0];
+    const or=await c.query('SELECT o.*,e.title event_title,e.date event_date,e.location event_location,e.org_id,e.capacity,e.ticket_categories,org.is_partner,org.partner_rate_under_5000,org.partner_rate_from_5000 FROM orders o JOIN events e ON e.id=o.event_id LEFT JOIN organizers org ON org.id=e.org_id WHERE o.id=$1 FOR UPDATE OF o',[orderId]);if(!or.rows.length)throw new Error('Commande introuvable.');const o=or.rows[0];
     const quantity=Math.max(1,Number(o.quantity||1));
     const existing=await c.query('SELECT * FROM tickets WHERE order_id=$1 ORDER BY id',[orderId]);
     if(o.status==='PAID' && existing.rows.length>=quantity){await c.query('COMMIT');return existing.rows;}
