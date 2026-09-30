@@ -196,8 +196,8 @@ async function buildTicketImage(ticket) {
     const qrRawVip = await QRCode.toBuffer(String(ticket.code), {
       width: 500, margin: 0, errorCorrectionLevel: 'M', type: 'png'
     });
-    const QR_ZONE = { x:1328, y:220, width:286, height:264 };
-    const QR_SIZE = Math.min(240, QR_ZONE.width, QR_ZONE.height);
+    const QR_ZONE = isVip ? { x:1364, y:226, width:294, height:270 } : { x:1328, y:220, width:286, height:264 };
+    const QR_SIZE = isVip ? 232 : Math.min(240, QR_ZONE.width, QR_ZONE.height);
     const qrLeft = Math.round(QR_ZONE.x + (QR_ZONE.width - QR_SIZE) / 2);
     const qrTop = Math.round(QR_ZONE.y + (QR_ZONE.height - QR_SIZE) / 2);
     const qrVip = await sharp(qrRawVip).resize(QR_SIZE,QR_SIZE,{fit:'contain'}).png().toBuffer();
@@ -205,11 +205,11 @@ async function buildTicketImage(ticket) {
     const fields = isVip ? [
       // VIP template: exact grey-field boxes on the 1774 x 887 artwork.
       // Every dynamic value is centered from the real zone rectangle.
-      {text:eventTitle,   x:196,  y:335, width:782, height:57,  size:42, minSize:16},
-      {text:organizer,    x:196,  y:440, width:706, height:45,  size:34, minSize:16},
-      {text:date,         x:286,  y:527, width:169, height:50,  size:20, minSize:11},
-      {text:eventTime,    x:606,  y:527, width:189, height:50,  size:20, minSize:11},
-      {text:location,     x:929,  y:527, width:274, height:50,  size:20, minSize:11}
+      {text:eventTitle,   x:201,  y:344, width:803, height:58,  size:42, minSize:16},
+      {text:organizer,    x:201,  y:452, width:725, height:45,  size:34, minSize:16},
+      {text:date,         x:295,  y:541, width:172, height:51,  size:26, minSize:14},
+      {text:eventTime,    x:623,  y:541, width:193, height:51,  size:26, minSize:14},
+      {text:location,     x:955,  y:541, width:279, height:51,  size:26, minSize:14}
     ] : [
       {text:eventTitle,x:285,y:307,maxWidth:800,size:24,minSize:12},
       {text:organizer,x:285,y:414,maxWidth:720,size:24,minSize:12},
@@ -222,7 +222,7 @@ async function buildTicketImage(ticket) {
       if (isVip) {
         const centerX = f.x + f.width / 2;
         const centerY = f.y + f.height / 2;
-        const safeWidth = Math.max(10, f.width - 28);
+        const safeWidth = Math.max(10, f.width - 14);
         const fs = ticketTextSize(f.text, safeWidth, f.size, f.minSize);
         return `<text x="${centerX}" y="${centerY}" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${fs}px" font-weight="800" dominant-baseline="middle" text-anchor="middle">${escXml(f.text)}</text>`;
       }
@@ -231,7 +231,7 @@ async function buildTicketImage(ticket) {
     }).join('');
 
     const categoryZone = isVip
-      ? {x:280,y:650,width:590,height:47}
+      ? {x:288,y:668,width:604,height:41}
       : null;
     const categorySvg = categoryZone
       ? (() => {
@@ -245,17 +245,17 @@ async function buildTicketImage(ticket) {
     const number = ticketNumber || '';
     const code = clean(ticket.code,32).toUpperCase();
     const numberZone = isVip
-      ? {x:1390,y:503,width:234,height:52}
+      ? {x:1427,y:516,width:240,height:53}
       : {x:1390,y:503,width:240,height:48};
     const codeZone = isVip
-      ? {x:1337,y:678,width:272,height:43}
+      ? {x:1373,y:696,width:278,height:44}
       : {x:1340,y:678,width:270,height:43};
     const numberX = numberZone.x + numberZone.width / 2;
     const numberY = numberZone.y + numberZone.height / 2;
     const codeX = codeZone.x + codeZone.width / 2;
     const codeY = codeZone.y + codeZone.height / 2;
-    const numberSize = ticketTextSize(number, numberZone.width - 24, 20, 12);
-    const codeSize = ticketTextSize(code, codeZone.width - 24, 17, 10);
+    const numberSize = ticketTextSize(number, numberZone.width - 16, isVip ? 26 : 20, 12);
+    const codeSize = ticketTextSize(code, codeZone.width - 16, isVip ? 22 : 17, 10);
 
     const overlay = Buffer.from(
       `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${textSvg}${categorySvg}<text x="${numberX}" y="${numberY}" text-anchor="middle" dominant-baseline="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${numberSize}px" font-weight="800">${escXml(number)}</text><text x="${codeX}" y="${codeY}" text-anchor="middle" dominant-baseline="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${codeSize}px" font-weight="700">${escXml(code)}</text></svg>`
@@ -263,7 +263,7 @@ async function buildTicketImage(ticket) {
 
     return sharp(template)
       .composite([
-        // Center QR inside the printed VIP QR frame (about 290 x 265).
+        // Center QR inside the printed VIP QR frame (brackets x1364-1658, y226-496).
         {input:qrVip,left:isVip ? qrLeft : 1375,top:isVip ? qrTop : 185},
         {input:overlay,left:0,top:0}
       ])
