@@ -199,13 +199,13 @@ async function buildTicketImage(ticket) {
     const qrVip = await sharp(qrRawVip).resize(250,250,{fit:'contain'}).png().toBuffer();
 
     const fields = isVip ? [
-      // VIP zones measured on the 1774 x 887 template.
-      // Center every value inside its grey field and keep a safe inner margin.
-      {text:eventTitle,x:201,y:372.5,maxWidth:780,size:30,minSize:16,anchor:'middle'},
-      {text:organizer,x:201,y:474.5,maxWidth:700,size:28,minSize:15,anchor:'middle'},
-      {text:date,x:295,y:565.5,maxWidth:152,size:19,minSize:11,anchor:'middle'},
-      {text:eventTime,x:623,y:565.5,maxWidth:172,size:19,minSize:11,anchor:'middle'},
-      {text:location,x:955,y:566,maxWidth:258,size:19,minSize:11,anchor:'middle'}
+      // VIP template: exact grey-field boxes on the 1774 x 887 artwork.
+      // Every dynamic value is centered from the real zone rectangle.
+      {text:eventTitle,   x:196,  y:335, width:782, height:57,  size:28, minSize:15},
+      {text:organizer,    x:196,  y:440, width:706, height:45,  size:26, minSize:15},
+      {text:date,         x:286,  y:527, width:169, height:50,  size:18, minSize:11},
+      {text:eventTime,    x:606,  y:527, width:189, height:50,  size:18, minSize:11},
+      {text:location,     x:929,  y:527, width:274, height:50,  size:18, minSize:11}
     ] : [
       {text:eventTitle,x:285,y:307,maxWidth:800,size:24,minSize:12},
       {text:organizer,x:285,y:414,maxWidth:720,size:24,minSize:12},
@@ -215,32 +215,52 @@ async function buildTicketImage(ticket) {
     ];
 
     const textSvg = fields.map(f => {
+      if (isVip) {
+        const centerX = f.x + f.width / 2;
+        const centerY = f.y + f.height / 2;
+        const safeWidth = Math.max(10, f.width - 28);
+        const fs = ticketTextSize(f.text, safeWidth, f.size, f.minSize);
+        return `<text x="${centerX}" y="${centerY}" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${fs}px" font-weight="800" dominant-baseline="middle" text-anchor="middle">${escXml(f.text)}</text>`;
+      }
       const fs = ticketTextSize(f.text,f.maxWidth,f.size,f.minSize);
-      const anchor = f.anchor || 'start';
-      return `<text x="${f.x}" y="${f.y}" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${fs}px" font-weight="800" dominant-baseline="middle" text-anchor="${anchor}">${escXml(f.text)}</text>`;
+      return `<text x="${f.x}" y="${f.y}" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${fs}px" font-weight="800" dominant-baseline="middle" text-anchor="start">${escXml(f.text)}</text>`;
     }).join('');
 
-    const categorySvg = isVip
-      ? '<text x="585" y="688" text-anchor="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="28px" font-weight="900" dominant-baseline="middle">VIP</text>'
+    const categoryZone = isVip
+      ? {x:280,y:650,width:590,height:47}
+      : null;
+    const categorySvg = categoryZone
+      ? (() => {
+          const centerX = categoryZone.x + categoryZone.width / 2;
+          const centerY = categoryZone.y + categoryZone.height / 2;
+          const fs = ticketTextSize('VIP', categoryZone.width - 28, 28, 16);
+          return `<text x="${centerX}" y="${centerY}" text-anchor="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${fs}px" font-weight="900" dominant-baseline="middle">VIP</text>`;
+        })()
       : '';
+
     const number = ticketNumber || '';
     const code = clean(ticket.code,32).toUpperCase();
-    // Right-side VIP zones: N° box and lower reference box.
-    const numX = isVip ? 1546.5 : 1510;
-    const numY = isVip ? 541.5 : 527;
-    const codeX = isVip ? 1511.5 : 1470;
-    const codeY = isVip ? 717.5 : 699;
-    const numberSize = ticketTextSize(number,215,22,12);
-    const codeSize = ticketTextSize(code,255,19,10);
+    const numberZone = isVip
+      ? {x:1390,y:503,width:234,height:52}
+      : {x:1390,y:503,width:240,height:48};
+    const codeZone = isVip
+      ? {x:1337,y:678,width:272,height:43}
+      : {x:1340,y:678,width:270,height:43};
+    const numberX = numberZone.x + numberZone.width / 2;
+    const numberY = numberZone.y + numberZone.height / 2;
+    const codeX = codeZone.x + codeZone.width / 2;
+    const codeY = codeZone.y + codeZone.height / 2;
+    const numberSize = ticketTextSize(number, numberZone.width - 24, 20, 12);
+    const codeSize = ticketTextSize(code, codeZone.width - 24, 18, 10);
 
     const overlay = Buffer.from(
-      `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${textSvg}${categorySvg}<text x="${numX}" y="${numY}" text-anchor="middle" dominant-baseline="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${numberSize}px" font-weight="800">${escXml(number)}</text><text x="${codeX}" y="${codeY}" text-anchor="middle" dominant-baseline="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${codeSize}px" font-weight="700">${escXml(code)}</text></svg>`
+      `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${textSvg}${categorySvg}<text x="${numberX}" y="${numberY}" text-anchor="middle" dominant-baseline="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${numberSize}px" font-weight="800">${escXml(number)}</text><text x="${codeX}" y="${codeY}" text-anchor="middle" dominant-baseline="middle" fill="#123b8f" font-family="Arial, Helvetica, sans-serif" font-size="${codeSize}px" font-weight="700">${escXml(code)}</text></svg>`
     );
 
     return sharp(template)
       .composite([
         // Center QR inside the printed VIP QR frame (about 290 x 265).
-        {input:qrVip,left:isVip ? 1345 : 1375,top:isVip ? 227 : 185},
+        {input:qrVip,left:isVip ? 1347 : 1375,top:isVip ? 225 : 185},
         {input:overlay,left:0,top:0}
       ])
       .png()
