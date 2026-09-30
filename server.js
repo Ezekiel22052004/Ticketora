@@ -1287,11 +1287,17 @@ app.post('/api/admin/payouts/:id/status',requireAdmin,asyncRoute(async(req,res)=
   return res.status(out.http).json(out.body);
 }));
 
+// Total des cotisations de cagnotte payées : il s'ajoute aux revenus totaux de l'administrateur.
+async function cagnotteRevenueTotal(){
+  try{await ensureCagnotteTables();const r=await pool.query("SELECT COALESCE(SUM(amount),0)::int AS total FROM contributions WHERE status='PAYE'");return Number(r.rows[0].total||0);}
+  catch(e){console.error('[REVENUS] cagnottes:',e.message);return 0;}
+}
 app.get('/api/admin/withdrawals',requireAdmin,asyncRoute(async(req,res)=>{
   await ensureAdminPayoutTable();
   const [rev,used,rows]=await Promise.all([pool.query(`SELECT COALESCE(SUM(admin_commission),0) AS total FROM tickets`),pool.query(`SELECT COALESCE(SUM(amount),0) AS total FROM admin_payouts WHERE status IN ('EN_ATTENTE','PAYE')`),pool.query(`SELECT * FROM admin_payouts ORDER BY id DESC`)]);
-  const balance=Number(rev.rows[0].total||0)-Number(used.rows[0].total||0);
-  res.json({success:true,withdrawals:rows.rows,balance:Math.max(0,balance),revenue:Number(rev.rows[0].total||0)});
+  const cag=await cagnotteRevenueTotal();
+  const balance=Number(rev.rows[0].total||0)+cag-Number(used.rows[0].total||0);
+  res.json({success:true,withdrawals:rows.rows,balance:Math.max(0,balance),revenue:Number(rev.rows[0].total||0)+cag,cagnottes:cag});
 }));
 app.post('/api/admin/withdrawals',requireAdmin,asyncRoute(async(req,res)=>{
   await ensureAdminPayoutTable();
@@ -1299,7 +1305,7 @@ app.post('/api/admin/withdrawals',requireAdmin,asyncRoute(async(req,res)=>{
   if(!amount||!account)return res.status(400).json({success:false,message:'Montant et compte obligatoires.'});
   const rev=await pool.query(`SELECT COALESCE(SUM(admin_commission),0) AS total FROM tickets`);
   const used=await pool.query(`SELECT COALESCE(SUM(amount),0) AS total FROM admin_payouts WHERE status IN ('EN_ATTENTE','PAYE')`);
-  const balance=Number(rev.rows[0].total||0)-Number(used.rows[0].total||0);
+  const balance=Number(rev.rows[0].total||0)+await cagnotteRevenueTotal()-Number(used.rows[0].total||0);
   if(amount>balance)return res.status(400).json({success:false,message:`Solde admin insuffisant. Disponible : ${Math.max(0,balance)} FCFA.`});
   const r=await pool.query('INSERT INTO admin_payouts(amount,account) VALUES($1,$2) RETURNING *',[amount,account]);
   res.status(201).json({success:true,withdrawal:r.rows[0],balance:balance-amount});
@@ -1328,7 +1334,8 @@ app.get('/api/admin/overview',requireAdmin,asyncRoute(async(req,res)=>{
     pool.query(`SELECT gs::date AS day,COUNT(t.id)::int tickets,COALESCE(SUM(t.admin_commission),0)::int revenue,COALESCE(SUM(t.total_amount),0)::int volume FROM generate_series(CURRENT_DATE-29,CURRENT_DATE,INTERVAL '1 day') gs LEFT JOIN tickets t ON t.issued_by_admin=false AND t.created_at::date=gs::date GROUP BY gs::date ORDER BY day`),
     pool.query(`SELECT ticket_type,COUNT(*)::int tickets,COALESCE(SUM(total_amount),0)::int volume FROM tickets WHERE issued_by_admin=false GROUP BY ticket_type ORDER BY tickets DESC LIMIT 8`)
   ]);
-  res.json({success:true,stats:{revenue:Number(rev.rows[0].revenue),volume:Number(rev.rows[0].volume),tickets:tix.rows[0].n,events:ev.rows[0].n,pendingOrganizers:pending.rows[0].n,organizers:orgs.rows[0].n,users:users.rows[0].n,payments:{pending:paystats.rows[0].pending||0,completed:paystats.rows[0].completed||0,failed:paystats.rows[0].failed||0,refunded:paystats.rows[0].refunded||0}},sales:sales.rows,daily:daily.rows.map(x=>({day:x.day,tickets:Number(x.tickets),revenue:Number(x.revenue),volume:Number(x.volume)})),categories:cats.rows.map(x=>({ticket_type:x.ticket_type,tickets:Number(x.tickets),volume:Number(x.volume)}))});
+  const cagRevenue=await cagnotteRevenueTotal();
+  res.json({success:true,stats:{revenue:Number(rev.rows[0].revenue)+cagRevenue,ticketRevenue:Number(rev.rows[0].revenue),cagnotteRevenue:cagRevenue,volume:Number(rev.rows[0].volume),tickets:tix.rows[0].n,events:ev.rows[0].n,pendingOrganizers:pending.rows[0].n,organizers:orgs.rows[0].n,users:users.rows[0].n,payments:{pending:paystats.rows[0].pending||0,completed:paystats.rows[0].completed||0,failed:paystats.rows[0].failed||0,refunded:paystats.rows[0].refunded||0}},sales:sales.rows,daily:daily.rows.map(x=>({day:x.day,tickets:Number(x.tickets),revenue:Number(x.revenue),volume:Number(x.volume)})),categories:cats.rows.map(x=>({ticket_type:x.ticket_type,tickets:Number(x.tickets),volume:Number(x.volume)}))});
 }));
 
 
