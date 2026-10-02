@@ -388,3 +388,9 @@ CREATE TABLE IF NOT EXISTS meeting_sessions (
   closed_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_meeting_sessions_org ON meeting_sessions(org_id);
+
+-- TICKETORA PUBLIC SHARING: URLs personnalisées
+ALTER TABLE events ADD COLUMN IF NOT EXISTS public_slug VARCHAR(180);
+ALTER TABLE cagnottes ADD COLUMN IF NOT EXISTS public_slug VARCHAR(180);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_public_slug ON events(public_slug) WHERE public_slug IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cagnottes_public_slug ON cagnottes(public_slug) WHERE public_slug IS NOT NULL;

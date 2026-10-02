@@ -444,6 +444,32 @@ async function buildTicketImage(ticket) {
     .toBuffer();
 }
 
+function publicSlug(value){
+  return String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,150)||'ticketora';
+}
+async function assignPublicSlug(table,id,title){
+  const baseSlug=publicSlug(title);
+  let slug=baseSlug, n=1;
+  while(true){
+    const q=await pool.query(`SELECT id FROM ${table} WHERE public_slug=$1 AND id<>$2 LIMIT 1`,[slug,id]);
+    if(!q.rows.length)break;
+    n++; slug=`${baseSlug}-${n}`;
+  }
+  await pool.query(`UPDATE ${table} SET public_slug=$1 WHERE id=$2`,[slug,id]);
+  return slug;
+}
+async function ensurePublicSlugTables(){
+  if(!process.env.DATABASE_URL)return;
+  await pool.query('ALTER TABLE events ADD COLUMN IF NOT EXISTS public_slug VARCHAR(180)');
+  await pool.query('ALTER TABLE cagnottes ADD COLUMN IF NOT EXISTS public_slug VARCHAR(180)');
+  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_events_public_slug ON events(public_slug) WHERE public_slug IS NOT NULL');
+  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_cagnottes_public_slug ON cagnottes(public_slug) WHERE public_slug IS NOT NULL');
+  const ev=await pool.query("SELECT id,title FROM events WHERE public_slug IS NULL OR public_slug='' ORDER BY id");
+  for(const row of ev.rows)await assignPublicSlug('events',row.id,row.title);
+  const cg=await pool.query("SELECT id,title FROM cagnottes WHERE public_slug IS NULL OR public_slug='' ORDER BY id");
+  for(const row of cg.rows)await assignPublicSlug('cagnottes',row.id,row.title);
+}
+
 async function ensureEventImageColumn(){
   if(!process.env.DATABASE_URL) return;
   await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS image_url TEXT`);
@@ -565,7 +591,7 @@ async function ensureSiteAccessTable(){
 }
 
 async function getSiteAccess(){
-  await ensureSiteAccessTable();await ensureLiveTables();
+  await ensureSiteAccessTable();await ensureLiveTables();await ensurePublicSlugTables();
   const r=await pool.query('SELECT id,mode,access_email,version,updated_at FROM site_access WHERE id=1');
   return r.rows[0]||{id:1,mode:'PUBLIC',access_email:null,version:1};
 }
@@ -788,11 +814,20 @@ app.get('/api/events',asyncRoute(async(req,res)=>{
  FROM events e LEFT JOIN organizers o ON o.id=e.org_id LEFT JOIN like_stats l ON l.event_id=e.id LEFT JOIN sold_stats s ON s.event_id=e.id WHERE ${where.join(' AND ')} ORDER BY ${order}`,params);
  res.json({success:true,events:r.rows});
 }));
+app.get('/api/events/slug/:slug',asyncRoute(async(req,res)=>{
+ const slug=clean(req.params.slug,180);
+ const r=await pool.query(`WITH like_stats AS (SELECT event_id,COUNT(*)::int like_count FROM event_likes GROUP BY event_id), sold_stats AS (SELECT event_id,COUNT(*)::int sold_count FROM tickets WHERE issued_by_admin=false GROUP BY event_id)
+ SELECT e.*,COALESCE(o.status='VALIDE',false) AS organizer_verified,COALESCE(s.sold_count,0)::int sold_count,COALESCE(l.like_count,0)::int like_count,
+ CASE WHEN e.capacity>0 AND COALESCE(s.sold_count,0)>=e.capacity THEN true WHEN jsonb_typeof(e.ticket_categories)='array' AND jsonb_array_length(e.ticket_categories)>0 AND COALESCE(s.sold_count,0)>=COALESCE((SELECT SUM((x->>'total_stock')::int) FROM jsonb_array_elements(e.ticket_categories) x),0) THEN true ELSE false END AS sold_out
+ FROM events e LEFT JOIN organizers o ON o.id=e.org_id LEFT JOIN like_stats l ON l.event_id=e.id LEFT JOIN sold_stats s ON s.event_id=e.id WHERE e.public_slug=$1 AND e.status='PUBLIE' AND (e.date > CURRENT_DATE OR (e.date=CURRENT_DATE AND COALESCE(e.event_time,'23:59:59'::time)>=CURRENT_TIME)) LIMIT 1`,[slug]);
+ if(!r.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});
+ res.json({success:true,event:r.rows[0]});
+}));
 app.post('/api/events/:id/like',asyncRoute(async(req,res)=>{const id=Number(req.params.id),vk=visitorKey(req);if(!Number.isInteger(id)||!vk)return res.status(400).json({success:false,message:'Identifiant visiteur requis.'});const ev=await pool.query("SELECT id FROM events WHERE id=$1 AND status='PUBLIE' AND date>=CURRENT_DATE",[id]);if(!ev.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});const existing=await pool.query('SELECT 1 FROM event_likes WHERE event_id=$1 AND visitor_key=$2',[id,vk]);let liked;if(existing.rows.length){await pool.query('DELETE FROM event_likes WHERE event_id=$1 AND visitor_key=$2',[id,vk]);liked=false;}else{await pool.query('INSERT INTO event_likes(event_id,visitor_key) VALUES($1,$2) ON CONFLICT DO NOTHING',[id,vk]);liked=true;}const c=await pool.query('SELECT COUNT(*)::int like_count FROM event_likes WHERE event_id=$1',[id]);res.json({success:true,liked,like_count:c.rows[0].like_count});}));
 app.get('/api/organizers/events',requireOrg,asyncRoute(async(req,res)=>{const r=await pool.query('SELECT e.*,COALESCE((SELECT COUNT(*) FROM tickets t WHERE t.event_id=e.id AND t.issued_by_admin=false),0)::int sold_count FROM events e WHERE e.org_id=$1 ORDER BY e.id DESC',[req.session.user.id]);res.json({success:true,events:r.rows});}));
 app.post('/api/organizers/events',requireOrg,asyncRoute(async(req,res)=>{
   const {title,category,date,location,venueName,city,address,latitude,longitude,description,price,capacity,ticketCategories,imageUrl,eventType}=req.body;const type=String(eventType||'PAID').toUpperCase()==='FREE'?'FREE':'PAID';const p=positiveInt(price),cap=positiveInt(capacity),cats=normalizeCats(ticketCategories);if(!clean(title)||!date||!clean(location)||p===null||cap===null||(type==='PAID'&&!cats.length)||(type==='FREE'&&cap===0))return res.status(400).json({success:false,message:'Informations événement/catégories incomplètes.'});
-  const primary=cats[0]?.price??p;const image=clean(imageUrl,1800000);if(image && !/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(image))return res.status(400).json({success:false,message:'Affiche invalide.'});const lat=latitude===null||latitude===undefined||latitude===''?null:Number(latitude),lon=longitude===null||longitude===undefined||longitude===''?null:Number(longitude);if((lat!==null&&(!Number.isFinite(lat)||lat<-90||lat>90))||(lon!==null&&(!Number.isFinite(lon)||lon<-180||lon>180)))return res.status(400).json({success:false,message:'Coordonnées GPS invalides.'});const r=await pool.query(`INSERT INTO events(org_id,title,category,date,location,venue_name,city,address,latitude,longitude,description,price,capacity,status,ticket_categories,max_tickets_per_order,image_url,event_type) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'EN_ATTENTE',$14::jsonb,$15,$16,$17) RETURNING *`,[req.session.user.id,clean(title),clean(category||'Concert',100),date,clean(location||venueName||city,255),clean(venueName,255),clean(city,120),clean(address,500),lat,lon,clean(description,3000),primary,cap,JSON.stringify(cats),Math.max(1,Math.min(50,Number(req.body.maxTicketsPerOrder)||10)),image||null,type]);res.status(201).json({success:true,event:r.rows[0],message:'Événement enregistré. Il attend la validation administrateur.'});
+  const primary=cats[0]?.price??p;const image=clean(imageUrl,1800000);if(image && !/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(image))return res.status(400).json({success:false,message:'Affiche invalide.'});const lat=latitude===null||latitude===undefined||latitude===''?null:Number(latitude),lon=longitude===null||longitude===undefined||longitude===''?null:Number(longitude);if((lat!==null&&(!Number.isFinite(lat)||lat<-90||lat>90))||(lon!==null&&(!Number.isFinite(lon)||lon<-180||lon>180)))return res.status(400).json({success:false,message:'Coordonnées GPS invalides.'});const r=await pool.query(`INSERT INTO events(org_id,title,category,date,location,venue_name,city,address,latitude,longitude,description,price,capacity,status,ticket_categories,max_tickets_per_order,image_url,event_type) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'EN_ATTENTE',$14::jsonb,$15,$16,$17) RETURNING *`,[req.session.user.id,clean(title),clean(category||'Concert',100),date,clean(location||venueName||city,255),clean(venueName,255),clean(city,120),clean(address,500),lat,lon,clean(description,3000),primary,cap,JSON.stringify(cats),Math.max(1,Math.min(50,Number(req.body.maxTicketsPerOrder)||10)),image||null,type]);await ensurePublicSlugTables(); const slug=await assignPublicSlug('events',r.rows[0].id,r.rows[0].title); r.rows[0].public_slug=slug; res.status(201).json({success:true,event:r.rows[0],message:'Événement enregistré. Il attend la validation administrateur.'});
 }));
 app.post('/api/organizers/events/:id/add-capacity',requireOrg,asyncRoute(async(req,res)=>{
  const id=Number(req.params.id),additional=positiveInt(req.body.additional);
@@ -887,7 +922,7 @@ app.post('/api/admin/events',requireAdmin,asyncRoute(async(req,res)=>{
   const image=clean(imageUrl,1800000);if(image && !/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(image))return res.status(400).json({success:false,message:'Affiche invalide.'});
   const cats=[{id:'CAT-DEFAULT',name:'Standard',price:p,total_stock:cap}];
   const r=await pool.query(`INSERT INTO events(title,category,date,location,description,price,capacity,status,ticket_categories,image_url) VALUES($1,$2,$3,'','',$4,$5,'PUBLIE',$6::jsonb,$7) RETURNING *`,[clean(title),clean(category||'Concert',100),date,p,cap,JSON.stringify(cats),image||null]);
-  res.status(201).json({success:true,event:r.rows[0]});
+  await ensurePublicSlugTables(); const slug=await assignPublicSlug('events',r.rows[0].id,r.rows[0].title); r.rows[0].public_slug=slug; res.status(201).json({success:true,event:r.rows[0]});
 }));
 app.post('/api/admin/events/:id/status',requireAdmin,asyncRoute(async(req,res)=>{const status=clean(req.body.status,20);if(!['PUBLIE','REFUSE','EN_ATTENTE','BROUILLON'].includes(status))return res.status(400).json({success:false});const r=await pool.query('UPDATE events SET status=$1,updated_at=NOW() WHERE id=$2 RETURNING *',[status,req.params.id]);if(!r.rows.length)return res.status(404).json({success:false});res.json({success:true,event:r.rows[0]});}));
 app.delete('/api/admin/events/:id',requireAdmin,asyncRoute(async(req,res)=>{const sold=await pool.query('SELECT COUNT(*)::int AS n FROM tickets WHERE event_id=$1',[req.params.id]);const orders=await pool.query('SELECT COUNT(*)::int AS n FROM orders WHERE event_id=$1',[req.params.id]);if(Number(sold.rows[0].n)>0||Number(orders.rows[0].n)>0)return res.status(400).json({success:false,message:'Impossible de supprimer cet événement : des achats ou billets sont déjà liés à cet événement.'});const r=await pool.query('DELETE FROM events WHERE id=$1 RETURNING id',[req.params.id]);if(!r.rows.length)return res.status(404).json({success:false,message:'Événement introuvable.'});res.json({success:true});}));
@@ -1511,9 +1546,10 @@ async function ensureCagnotteTables(){
   await pool.query('CREATE INDEX IF NOT EXISTS idx_contributions_tchin ON contributions(tchin_token)');
 }
 function normalizeImages(images){if(!Array.isArray(images))return [];return images.map(x=>clean(x,1800000)).filter(x=>/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(x)).slice(0,6);}
-app.get('/api/cagnottes',asyncRoute(async(req,res)=>{await ensureCagnotteTables();const r=await pool.query("SELECT id,title,description,images,status,target_amount,(SELECT COALESCE(SUM(k.amount),0)::int FROM contributions k WHERE k.cagnotte_id=cagnottes.id AND k.status='PAYE') AS total_amount,created_at,launched_at FROM cagnottes WHERE status='PUBLIE' ORDER BY id DESC");res.json({success:true,cagnottes:r.rows});}));
+app.get('/api/cagnottes',asyncRoute(async(req,res)=>{await ensureCagnotteTables();await ensurePublicSlugTables();const r=await pool.query("SELECT id,title,description,images,status,target_amount,public_slug,(SELECT COALESCE(SUM(k.amount),0)::int FROM contributions k WHERE k.cagnotte_id=cagnottes.id AND k.status='PAYE') AS total_amount,created_at,launched_at FROM cagnottes WHERE status='PUBLIE' ORDER BY id DESC");res.json({success:true,cagnottes:r.rows});}));
+app.get('/api/cagnottes/slug/:slug',asyncRoute(async(req,res)=>{await ensureCagnotteTables();await ensurePublicSlugTables();const slug=clean(req.params.slug,180);const r=await pool.query("SELECT id,title,description,images,status,target_amount,public_slug,created_at,launched_at,(SELECT COALESCE(SUM(k.amount),0)::int FROM contributions k WHERE k.cagnotte_id=cagnottes.id AND k.status='PAYE') AS total_amount FROM cagnottes WHERE public_slug=$1 AND status='PUBLIE' LIMIT 1",[slug]);if(!r.rows.length)return res.status(404).json({success:false,message:'Cagnotte introuvable.'});const c=r.rows[0];const p=await pool.query("SELECT id,COALESCE(NULLIF(trim(contributor_name),''),'Anonyme') AS contributor_name,amount,created_at,paid_at FROM contributions WHERE cagnotte_id=$1 AND status='PAYE' ORDER BY paid_at DESC NULLS LAST,created_at DESC",[c.id]);res.json({success:true,cagnotte:c,participants:p.rows});}));
 app.get('/api/admin/cagnottes',requireAdmin,asyncRoute(async(req,res)=>{await ensureCagnotteTables();const r=await pool.query("SELECT g.*,(SELECT COALESCE(SUM(k.amount),0)::int FROM contributions k WHERE k.cagnotte_id=g.id AND k.status='PAYE') AS total_amount FROM cagnottes g ORDER BY g.id DESC");res.json({success:true,cagnottes:r.rows});}));
-app.post('/api/admin/cagnottes',requireAdmin,asyncRoute(async(req,res)=>{await ensureCagnotteTables();const title=clean(req.body.title,255),description=clean(req.body.description,10000),images=normalizeImages(req.body.images),target=positiveInt(req.body.targetAmount);if(!title||!description)return res.status(400).json({success:false,message:'Titre et description obligatoires.'});const r=await pool.query('INSERT INTO cagnottes(title,description,images,target_amount,admin_email) VALUES($1,$2,$3::jsonb,$4,$5) RETURNING *',[title,description,JSON.stringify(images),target||null,req.session.user.email]);res.status(201).json({success:true,cagnotte:r.rows[0],message:'Cagnotte créée en brouillon.'});}));
+app.post('/api/admin/cagnottes',requireAdmin,asyncRoute(async(req,res)=>{await ensureCagnotteTables();const title=clean(req.body.title,255),description=clean(req.body.description,10000),images=normalizeImages(req.body.images),target=positiveInt(req.body.targetAmount);if(!title||!description)return res.status(400).json({success:false,message:'Titre et description obligatoires.'});const r=await pool.query('INSERT INTO cagnottes(title,description,images,target_amount,admin_email) VALUES($1,$2,$3::jsonb,$4,$5) RETURNING *',[title,description,JSON.stringify(images),target||null,req.session.user.email]);await ensurePublicSlugTables(); const slug=await assignPublicSlug('cagnottes',r.rows[0].id,r.rows[0].title); r.rows[0].public_slug=slug; res.status(201).json({success:true,cagnotte:r.rows[0],message:'Cagnotte créée en brouillon.'});}));
 app.post('/api/admin/cagnottes/:id/launch',requireAdmin,asyncRoute(async(req,res)=>{await ensureCagnotteTables();const r=await pool.query("UPDATE cagnottes SET status='PUBLIE',launched_at=COALESCE(launched_at,NOW()),updated_at=NOW() WHERE id=$1 RETURNING *",[req.params.id]);if(!r.rows.length)return res.status(404).json({success:false,message:'Cagnotte introuvable.'});res.json({success:true,cagnotte:r.rows[0]});}));
 app.post('/api/admin/cagnottes/:id/stop',requireAdmin,asyncRoute(async(req,res)=>{await ensureCagnotteTables();const r=await pool.query("UPDATE cagnottes SET status='TERMINE',updated_at=NOW() WHERE id=$1 RETURNING *",[req.params.id]);if(!r.rows.length)return res.status(404).json({success:false,message:'Cagnotte introuvable.'});res.json({success:true,cagnotte:r.rows[0]});}));
 app.delete('/api/admin/cagnottes/:id',requireAdmin,asyncRoute(async(req,res)=>{await ensureCagnotteTables();const r=await pool.query("DELETE FROM cagnottes WHERE id=$1 AND status<>'PUBLIE' RETURNING id",[req.params.id]);if(!r.rows.length)return res.status(400).json({success:false,message:'Une cagnotte publiée ne peut pas être supprimée.'});res.json({success:true});}));
@@ -1763,7 +1799,8 @@ app.use(asyncRoute(async(req,res,next)=>{
   }
   next();
 }));
+app.use((req,res,next)=>{const pathname=req.path||'/';if(pathname.startsWith('/e/')||pathname.startsWith('/c/'))return res.sendFile(path.join(__dirname,'index.html'));next();});
 app.use(express.static(__dirname));
 app.use((err,req,res,next)=>{console.error(err);if(res.headersSent)return next(err);if(err?.type==='entity.too.large')return res.status(413).json({success:false,message:'Fichier ou requête trop volumineux.'});res.status(500).json({success:false,message:'Erreur interne du serveur.'});});
 
-app.listen(PORT,async()=>{try{await ensureEventImageColumn();await ensureAdminPayoutTable();await ensurePayoutTchinColumns();await ensureChatTable();await ensureScannerTable();await ensureCagnotteTables();await ensurePromoTables();await ensureV3Tables();await ensureV7MultiTicketTables();await ensureOrganizerGeneratedTicketColumns();await ensureTicketDownloadTable();await ensureAdminCredentials();await ensureSiteAccessTable();await ensureLiveTables();console.log(`Ticketora API sur http://localhost:${PORT}`);setInterval(syncPendingTchinPayouts,120000);syncPendingCagnotteContributions();setInterval(syncPendingCagnotteContributions,60000);}catch(e){console.error('Initialisation base admin retraits:',e.message);console.log(`Ticketora API sur http://localhost:${PORT}`);}});
+app.listen(PORT,async()=>{try{await ensureEventImageColumn();await ensureAdminPayoutTable();await ensurePayoutTchinColumns();await ensureChatTable();await ensureScannerTable();await ensureCagnotteTables();await ensurePromoTables();await ensureV3Tables();await ensureV7MultiTicketTables();await ensureOrganizerGeneratedTicketColumns();await ensureTicketDownloadTable();await ensureAdminCredentials();await ensureSiteAccessTable();await ensureLiveTables();await ensurePublicSlugTables();console.log(`Ticketora API sur http://localhost:${PORT}`);setInterval(syncPendingTchinPayouts,120000);syncPendingCagnotteContributions();setInterval(syncPendingCagnotteContributions,60000);}catch(e){console.error('Initialisation base admin retraits:',e.message);console.log(`Ticketora API sur http://localhost:${PORT}`);}});
