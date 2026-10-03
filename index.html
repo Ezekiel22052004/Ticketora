@@ -68,6 +68,8 @@
         .public-ad-card{min-width:min(88vw,720px);scroll-snap-align:start;border-radius:14px;overflow:hidden;background:#fff;display:block;box-shadow:0 8px 24px rgba(0,0,0,.12)}.public-ad-card img{display:block;width:100%;height:86px;object-fit:cover}.public-ad-card{transition:transform .2s ease,box-shadow .2s ease}.public-ad-card:hover{transform:translateY(-2px);box-shadow:0 14px 32px rgba(0,0,0,.16)}.public-ad-fallback{padding:20px;color:#071a3b;font-weight:900}
         @media(max-width:767px){.access-card{padding:15px!important}.public-ad-card{min-width:92vw}.public-ad-card img{height:72px}}
 </style>
+<style>
+.pay-slider{position:relative;width:100%;height:56px;border-radius:16px;overflow:hidden;user-select:none;touch-action:none;cursor:grab;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;letter-spacing:.01em}.pay-slider.dragging{cursor:grabbing}.pay-slider-orange{background:#F97316;color:#fff;box-shadow:0 8px 22px rgba(249,115,22,.22)}.pay-slider-track{pointer-events:none}.pay-slider-handle{position:absolute;left:3px;top:3px;width:50px;height:50px;border-radius:13px;background:#fff;color:#F97316;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,.18);transition:left .18s ease}.pay-slider.completed .pay-slider-handle{transition:left .15s ease}.pay-slider.completed{cursor:default}</style>
 </head>
 <body class="bg-white text-slate-900 min-h-screen">
     <button id="pwa-install" class="pwa-install-btn" type="button"><i class="fa-solid fa-download"></i><span>Installer Ticketora</span></button>
@@ -248,7 +250,7 @@
                 <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-xl px-4 py-3"><div><p class="text-xs font-bold text-slate-300 uppercase">Quantité</p><p id="buy-stock-note" class="text-[11px] text-slate-500 mt-1"></p></div><div class="flex items-center gap-3"><button type="button" onclick="changeBuyQuantity(-1)" class="w-9 h-9 rounded-lg bg-slate-700 text-white font-black">−</button><span id="buy-quantity" class="w-8 text-center font-black text-white">1</span><button type="button" onclick="changeBuyQuantity(1)" class="w-9 h-9 rounded-lg bg-slate-700 text-white font-black">+</button></div></div>
                 <div id="buy-total-box" class="rounded-xl bg-slate-900 border border-slate-700 p-4 text-sm"></div>
                 <div><label class="block text-xs font-bold text-slate-300 uppercase mb-1">Code Promo (Optionnel)</label><div class="flex gap-2"><input type="text" id="buy-promo" placeholder="Ex: JEUNES10" class="uppercase w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white"><button type="button" onclick="applyPromoCode()" class="bg-slate-700 text-xs px-3 py-2 rounded-xl font-bold hover:bg-slate-600 text-white">Appliquer</button></div><div id="buy-promo-message" class="text-xs mt-2"></div></div>
-                <button onclick="processPayment()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2"><i class="fa-solid fa-credit-card"></i> Payer</button>
+                <div id="ticket-payment-slider" class="pay-slider pay-slider-orange" data-pay-action="processPayment"><span class="pay-slider-track">Glisser pour payer</span><span class="pay-slider-handle"><i class="fa-solid fa-arrow-right"></i></span></div>
             </div>
             <div id="buy-step-2" class="hidden space-y-4 text-center"></div>
         </div>
