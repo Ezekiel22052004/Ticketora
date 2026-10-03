@@ -13,6 +13,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.15.2/dist/livekit-client.umd.min.js"></script>
     <style>
         html{scroll-behavior:smooth}
         .pwa-install-btn{position:fixed;right:16px;bottom:18px;z-index:120;display:none;align-items:center;gap:9px;background:#06132f;color:#fff;border:1px solid rgba(249,115,22,.45);box-shadow:0 14px 35px rgba(0,0,0,.22);border-radius:999px;padding:12px 16px;font-weight:800;font-size:13px}
@@ -154,7 +155,6 @@
             </div>
 
             <div id="categorized-events" class="mb-10"></div>
-            <div id="upcoming-events-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6"></div>
             <p id="upcoming-events-empty" class="hidden text-slate-500 font-semibold py-8">Aucun événement publié pour le moment.</p>
 
             <div class="mt-12">
@@ -188,6 +188,26 @@
             <div id="all-events-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6"></div>
         </div>
     </section>
+
+    <!-- CONCERT LIVE PUBLIC -->
+    <section id="concert-live-public" class="public-main-section bg-[#071a3b] px-6 md:px-8 py-12">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+                <div>
+                    <p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Ticketora Live</p>
+                    <h2 class="text-3xl md:text-4xl font-black text-white">Concert Live</h2>
+                    <p class="text-slate-300 font-semibold mt-1">Regardez les événements actuellement en direct.</p>
+                </div>
+            </div>
+            <div id="concert-live-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+        </div>
+    </section>
+
+    <div id="modal-live-watch" class="hidden fixed inset-0 z-[98] bg-black/90 backdrop-blur-sm p-4 overflow-y-auto">
+        <div class="max-w-5xl mx-auto min-h-full flex items-center justify-center">
+            <div id="live-watch-box" class="w-full bg-[#071a3b] rounded-3xl p-5 md:p-7 shadow-2xl"></div>
+        </div>
+    </div>
 
     <section id="cagnotte-detail-page" class="hidden public-main-section bg-slate-50 px-4 md:px-8 py-10 min-h-[70vh]"></section>
 
