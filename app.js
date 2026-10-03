@@ -37,6 +37,29 @@ function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&l
 function fmt(n){return Number(n||0).toLocaleString('fr-FR');}
 function getVisitorKey(){let k=localStorage.getItem('ticketora_visitor_key');if(!k){k=(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`);localStorage.setItem('ticketora_visitor_key',k);}return k;}
 function eventApiHeaders(){return {'X-Ticketora-Visitor':getVisitorKey()};}
+function publicBottomNav(target){
+  const nav=document.getElementById('mobile-bottom-nav');
+  try{
+    if(target==='home'){
+      showSection('client-home');
+      window.scrollTo({top:0,behavior:'smooth'});
+    }else if(target==='events'){
+      showSection('client-events');
+      document.getElementById('events-public')?.scrollIntoView({behavior:'smooth',block:'start'});
+    }else if(target==='cagnottes'){
+      document.getElementById('cagnottes-public')?.scrollIntoView({behavior:'smooth',block:'start'});
+    }else if(target==='notifications'){
+      openParticipantLogin();
+    }else if(target==='profile'){
+      openParticipantLogin();
+    }else if(target==='live'){
+      showConcertLives();
+    }
+  }catch(e){
+    console.error('Navigation mobile:',e);
+  }
+}
+window.publicBottomNav=publicBottomNav;
 function showSection(sectionId){
   const publicSections=['client-home','client-events','client-verify','concert-live-public'];
   publicSections.forEach(id=>{const el=$(id);if(el)el.classList.toggle('hidden',id!==sectionId);});
@@ -44,7 +67,48 @@ function showSection(sectionId){
 }
 async function fetchPublicEvents(){try{const d=await api('/api/events',{headers:eventApiHeaders()});cachedEvents=d.events||[];renderPublicEvents();renderTrendingEvents();populateEventFilters();const eventId=new URLSearchParams(location.search).get('event');if(eventId){const ev=cachedEvents.find(x=>String(x.id)===String(eventId));if(ev)openEventDetails(ev.id);} }catch(e){console.error(e);const g=$('all-events-grid');if(g)g.innerHTML='<p class="text-sm text-rose-500 font-bold">Impossible de charger les événements.</p>';}}
 function eventCard(e,compact=true){let cats=Array.isArray(e.ticket_categories)?e.ticket_categories:[];const price=cats.length?Math.min(...cats.map(c=>Number(c.price||0))):Number(e.price||0);const free=String(e.event_type||'PAID')==='FREE';const sold=!!e.sold_out;const liked=!!e.liked;return `<article class="event-card-public bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col shadow-sm relative group ${compact?'':''}" data-event-id="${Number(e.id)}" data-title="${esc(e.title)}" data-city="${esc(e.city||e.location||'')}" data-category="${esc(e.category||'')}" data-date="${esc(e.date||'')}" data-type="${free?'FREE':'PAID'}">${e.image_url?`<div class="relative overflow-hidden"><img src="${esc(e.image_url)}" alt="Affiche ${esc(e.title)}" class="w-full h-40 sm:h-48 object-cover event-poster">${sold?'<span class="absolute top-3 left-3 bg-red-600 text-white px-2 py-1 rounded-lg text-[9px] font-black tracking-wide shadow-lg">SOLD OUT</span>':''}</div>`:`<div class="relative w-full h-40 sm:h-48 bg-gradient-to-br from-[#071a3b] to-[#102d5e] flex items-center justify-center"><img src="logo.png" alt="Ticketora" class="w-16 h-16 object-contain opacity-80">${sold?'<span class="absolute top-3 left-3 bg-red-600 text-white px-2 py-1 rounded-lg text-[9px] font-black">SOLD OUT</span>':''}</div>`}<div class="p-3 sm:p-4 flex flex-col flex-1"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><h3 class="text-sm sm:text-base font-black text-[#071a3b] leading-tight line-clamp-2">${esc(e.title)}</h3>${e.organizer_verified?'<span class="inline-flex items-center gap-1 mt-1 text-[9px] font-black text-emerald-600"><i class="fa-solid fa-circle-check"></i> Organisateur vérifié</span>':''}<p class="text-[10px] sm:text-xs text-slate-500 font-semibold mt-1"><i class="fa-regular fa-calendar mr-1"></i>${esc(e.date||'')}</p><p class="text-[10px] sm:text-xs text-slate-500 font-semibold mt-1 truncate"><i class="fa-solid fa-location-dot text-[#F97316] mr-1"></i>${esc(e.city||e.location||'')}</p></div><button onclick="likeEvent(${Number(e.id)},event)" class="shrink-0 w-9 h-9 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:text-[#F97316] hover:border-orange-200 transition" title="J'aime"><i class="${liked?'fa-solid text-[#F97316]':'fa-regular'} fa-heart"></i></button></div><div class="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100"><div><p class="text-[9px] uppercase font-black text-slate-400">${free?'ENTRÉE':'À PARTIR DE'}</p><p class="text-sm sm:text-base font-black text-[#071a3b]">${free?'GRATUITE':fmt(price)+' FCFA'}</p></div><div class="flex items-center gap-1 text-[10px] font-bold text-slate-400"><i class="fa-solid fa-heart text-[#F97316]"></i><span class="like-count">${Number(e.like_count||0)}</span></div></div><div class="flex gap-2 mt-3">${!sold?`<button onclick="openBuyModal(${Number(e.id)})" class="flex-1 bg-[#F97316] hover:bg-orange-600 text-white font-bold px-3 py-2 rounded-xl text-[10px] sm:text-xs transition">${free?'Participer':'Acheter'}</button>`:''}<button onclick="openEventDetails(${Number(e.id)})" class="flex-1 border border-slate-200 rounded-xl text-slate-600 hover:text-[#F97316] font-bold px-2 py-2 text-[10px] sm:text-xs transition">Détails</button><button onclick="shareEvent(${Number(e.id)},'${encodeURIComponent(`${location.origin}${location.pathname}?event=${e.id}`)}')" class="w-10 h-9 border border-slate-200 rounded-xl text-slate-500 hover:text-[#F97316] transition" title="Partager"><i class="fa-solid fa-share-nodes"></i></button></div></div></article>`;}
-function renderPublicEvents(){const grid=$('all-events-grid'),upcoming=$('upcoming-events-grid'),empty=$('upcoming-events-empty');if(!grid&&!upcoming)return;const all=(cachedEvents||[]).map(e=>eventCard(e,true)).join('');if(grid){grid.innerHTML=all||'<p class="text-slate-500 text-sm font-semibold">Aucun événement publié.</p>';filterEvents();}if(upcoming){const upcomingEvents=(cachedEvents||[]).slice(0,3);upcoming.innerHTML=upcomingEvents.map(e=>eventCard(e,true)).join('');empty?.classList.toggle('hidden',upcomingEvents.length>0);}}
+function renderCategorizedEvents(){
+  const box=$('categorized-events');
+  if(!box)return;
+  const groups=new Map();
+  (cachedEvents||[]).forEach(e=>{
+    const key=String(e.category||'Autres événements').trim()||'Autres événements';
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(e);
+  });
+  if(!groups.size){
+    box.innerHTML='';
+    return;
+  }
+  box.innerHTML=[...groups.entries()].map(([category,events])=>`
+    <div class="event-category-block mb-8">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <h3 class="text-xl sm:text-2xl font-black text-[#071a3b]">${esc(category)}</h3>
+        <span class="text-[10px] sm:text-xs font-black uppercase tracking-wider text-[#F97316]">${events.length} événement${events.length>1?'s':''}</span>
+      </div>
+      <div class="event-category-row flex gap-4 overflow-x-auto snap-x snap-mandatory pb-3" style="scrollbar-width:none;-webkit-overflow-scrolling:touch">
+        ${events.map(e=>`<div class="shrink-0 w-[84vw] sm:w-[330px] lg:w-[350px] snap-start">${eventCard(e,true)}</div>`).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderPublicEvents(){
+  const grid=$('all-events-grid'),upcoming=$('upcoming-events-grid'),empty=$('upcoming-events-empty');
+  renderCategorizedEvents();
+  if(grid){
+    const all=(cachedEvents||[]).map(e=>eventCard(e,true)).join('');
+    grid.innerHTML=all||'<p class="text-slate-500 text-sm font-semibold">Aucun événement publié.</p>';
+    filterEvents();
+  }
+  // L'ancien bloc vertical reste dans le HTML pour préserver la structure,
+  // mais il n'est plus alimenté afin d'éviter les doublons avec le nouveau carousel.
+  if(upcoming){
+    upcoming.innerHTML='';
+    upcoming.classList.add('hidden');
+    empty?.classList.add('hidden');
+  }
+}
 function renderTrendingEvents(){const box=$('trending-events-grid');if(!box)return;const arr=[...(cachedEvents||[])].sort((a,b)=>(Number(b.like_count||0)*5+Number(b.sold_count||0)*3)-(Number(a.like_count||0)*5+Number(a.sold_count||0)*3)).slice(0,6);box.innerHTML=arr.map(e=>eventCard(e,true)).join('')||'<p class="text-slate-500 font-semibold">Aucun événement tendance pour le moment.</p>';}
 function populateEventFilters(){const city=$('filter-city'),cat=$('filter-category');const cities=[...new Set((cachedEvents||[]).map(e=>String(e.city||e.location||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));const categories=[...new Set((cachedEvents||[]).map(e=>String(e.category||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));if(city){const current=city.value;city.innerHTML='<option value="ALL">Toutes les villes</option>'+cities.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');if(cities.includes(current))city.value=current;}if(cat){const current=cat.value;cat.innerHTML='<option value="ALL">Toutes catégories</option>'+categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');if(categories.includes(current))cat.value=current;}}
 function filterEvents(){const s=($('search-event')?.value||'').trim().toLowerCase(),cat=$('filter-category')?.value||'ALL',city=$('filter-city')?.value||'ALL',range=$('filter-date')?.value||'ALL',type=$('filter-type')?.value||'ALL',sort=$('filter-sort')?.value||'date';const today=new Date();today.setHours(0,0,0,0);document.querySelectorAll('#all-events-grid > article').forEach(card=>{const title=(card.dataset.title||'').toLowerCase(),c=card.dataset.category||'',ct=card.dataset.city||'',d=card.dataset.date||'',t=card.dataset.type||'PAID';const dt=new Date(d+'T00:00:00');const days=Math.round((dt-today)/86400000);const matchSearch=!s||title.includes(s)||ct.toLowerCase().includes(s);const matchCat=cat==='ALL'||c.toLowerCase()===cat.toLowerCase();const matchCity=city==='ALL'||ct.toLowerCase()===city.toLowerCase();const matchType=type==='ALL'||t===type;const matchRange=range==='ALL'||(range==='TODAY'&&days===0)||(range==='WEEK'&&days>=0&&days<=7)||(range==='MONTH'&&days>=0&&days<=30);card.classList.toggle('hidden',!(matchSearch&&matchCat&&matchCity&&matchType&&matchRange));});const grid=$('all-events-grid');if(grid){const cards=[...grid.children].filter(x=>x.tagName==='ARTICLE'&&!x.classList.contains('hidden'));cards.sort((a,b)=>{const A=cachedEvents.find(e=>String(e.id)===a.dataset.eventId)||{},B=cachedEvents.find(e=>String(e.id)===b.dataset.eventId)||{};if(sort==='likes')return Number(B.like_count||0)-Number(A.like_count||0);if(sort==='trending')return (Number(B.like_count||0)*5+Number(B.sold_count||0)*3)-(Number(A.like_count||0)*5+Number(A.sold_count||0)*3);return String(A.date||'').localeCompare(String(B.date||''));});cards.forEach(x=>grid.appendChild(x));}}
