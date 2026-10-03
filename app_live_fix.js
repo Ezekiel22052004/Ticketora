@@ -1,0 +1,618 @@
+const API=(window.TICKETORA_API_URL||'').replace(/\/$/,'');
+let cachedEvents=[];let activeBuyingEvent=null;let activeBuyingCategory=null;let activeBuyQuantity=1;let appliedDiscount=0;let appliedPromo=null;let paymentPollTimer=null;
+const $=id=>document.getElementById(id);
+async function api(path,options={}){const r=await fetch(`${API}${path}`,{credentials:'include',...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.message||'Erreur serveur');return d;}
+
+// ---------- ACCÈS PUBLIC DU SITE ----------
+(function initTicketoraSiteAccess(){
+ if(!['/','/index.html'].includes(location.pathname)) return;
+ const style=document.createElement('style');
+ style.textContent=`#ticketora-access-gate{position:fixed;inset:0;z-index:999999;background:#07152f;color:#fff;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Arial,sans-serif}#ticketora-access-gate .box{width:min(430px,100%);background:#102342;border:1px solid #294261;border-radius:24px;padding:32px;box-shadow:0 25px 80px rgba(0,0,0,.35)}#ticketora-access-gate h1{margin:0 0 8px;font-size:25px;font-weight:900}#ticketora-access-gate p{color:#aebed3;line-height:1.6;font-size:14px}.ta-input{width:100%;box-sizing:border-box;padding:13px 14px;margin-top:10px;border-radius:12px;border:1px solid #395270;background:#0b1d39;color:#fff;outline:none}.ta-btn{width:100%;padding:13px;margin-top:14px;border:0;border-radius:12px;background:#f97316;color:#fff;font-weight:800;cursor:pointer}.ta-msg{margin-top:12px;color:#ffb4b4;font-size:12px;font-weight:700;text-align:center}.ta-logo{color:#ff8a00;font-size:30px;font-weight:900;margin-bottom:22px}`;
+ document.head.appendChild(style);
+ let gate=null;
+ const createGate=(mode)=>{
+   if(gate)gate.remove();
+   gate=document.createElement('div');gate.id='ticketora-access-gate';
+   if(mode==='CLOSED'){
+     gate.innerHTML='<div class="box"><div class="ta-logo">TICKETORA</div><h1>Site temporairement fermé</h1><p>Ticketora est actuellement en maintenance. Le site sera de nouveau accessible prochainement.</p></div>';
+   }else{
+     gate.innerHTML='<div class="box"><div class="ta-logo">TICKETORA</div><h1>Accès protégé</h1><p>Ce site est actuellement réservé aux personnes autorisées.</p><form id="ta-access-form"><input id="ta-email" class="ta-input" type="email" required placeholder="Email d’accès"><input id="ta-password" class="ta-input" type="password" required placeholder="Mot de passe"><button class="ta-btn">Accéder au site</button><div id="ta-msg" class="ta-msg"></div></form></div>';
+     gate.querySelector('#ta-access-form').addEventListener('submit',async ev=>{
+       ev.preventDefault();const msg=gate.querySelector('#ta-msg');msg.textContent='Vérification…';
+       try{await api('/api/site-access/login',{method:'POST',body:JSON.stringify({email:gate.querySelector('#ta-email').value,password:gate.querySelector('#ta-password').value})});gate.remove();gate=null;location.reload();}catch(e){msg.textContent=e.message;}
+     });
+   }
+   document.body.appendChild(gate);
+ };
+ const check=async()=>{
+   try{
+     const d=await api('/api/site-access/status');
+     if(d.mode==='PUBLIC'||d.accessGranted){if(gate){gate.remove();gate=null;}return;}
+     createGate(d.mode);
+   }catch(e){createGate('CLOSED');}
+ };
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',check);else check();
+})();
+function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function fmt(n){return Number(n||0).toLocaleString('fr-FR');}
+function getVisitorKey(){let k=localStorage.getItem('ticketora_visitor_key');if(!k){k=(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`);localStorage.setItem('ticketora_visitor_key',k);}return k;}
+function eventApiHeaders(){return {'X-Ticketora-Visitor':getVisitorKey()};}
+function publicBottomNav(target){
+  const nav=document.getElementById('mobile-bottom-nav');
+  try{
+    if(target==='home'){
+      showSection('client-home');
+      window.scrollTo({top:0,behavior:'smooth'});
+    }else if(target==='events'){
+      showSection('client-events');
+      document.getElementById('events-public')?.scrollIntoView({behavior:'smooth',block:'start'});
+    }else if(target==='cagnottes'){
+      document.getElementById('cagnottes-public')?.scrollIntoView({behavior:'smooth',block:'start'});
+    }else if(target==='notifications'){
+      openParticipantLogin();
+    }else if(target==='profile'){
+      openParticipantLogin();
+    }
+  }catch(e){
+    console.error('Navigation mobile:',e);
+  }
+}
+window.publicBottomNav=publicBottomNav;
+function showSection(sectionId){
+  const publicSections=['client-home','client-events','client-verify','concert-live-public'];
+  publicSections.forEach(id=>{const el=$(id);if(el)el.classList.toggle('hidden',id!==sectionId);});
+  if(sectionId==='client-events'){$('client-events')?.scrollIntoView({behavior:'smooth',block:'start'});}
+}
+async function fetchPublicEvents(){try{const d=await api('/api/events',{headers:eventApiHeaders()});cachedEvents=d.events||[];renderPublicEvents();renderTrendingEvents();populateEventFilters();const eventId=new URLSearchParams(location.search).get('event');if(eventId){const ev=cachedEvents.find(x=>String(x.id)===String(eventId));if(ev)openEventDetails(ev.id);} }catch(e){console.error(e);const g=$('all-events-grid');if(g)g.innerHTML='<p class="text-sm text-rose-500 font-bold">Impossible de charger les événements.</p>';}}
+function eventCard(e,compact=true){let cats=Array.isArray(e.ticket_categories)?e.ticket_categories:[];const price=cats.length?Math.min(...cats.map(c=>Number(c.price||0))):Number(e.price||0);const free=String(e.event_type||'PAID')==='FREE';const sold=!!e.sold_out;const liked=!!e.liked;return `<article class="event-card-public bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col shadow-sm relative group ${compact?'':''}" data-event-id="${Number(e.id)}" data-title="${esc(e.title)}" data-city="${esc(e.city||e.location||'')}" data-category="${esc(e.category||'')}" data-date="${esc(e.date||'')}" data-type="${free?'FREE':'PAID'}">${e.image_url?`<div class="relative overflow-hidden"><img src="${esc(e.image_url)}" alt="Affiche ${esc(e.title)}" class="w-full h-40 sm:h-48 object-cover event-poster">${sold?'<span class="absolute top-3 left-3 bg-red-600 text-white px-2 py-1 rounded-lg text-[9px] font-black tracking-wide shadow-lg">SOLD OUT</span>':''}</div>`:`<div class="relative w-full h-40 sm:h-48 bg-gradient-to-br from-[#071a3b] to-[#102d5e] flex items-center justify-center"><img src="logo.png" alt="Ticketora" class="w-16 h-16 object-contain opacity-80">${sold?'<span class="absolute top-3 left-3 bg-red-600 text-white px-2 py-1 rounded-lg text-[9px] font-black">SOLD OUT</span>':''}</div>`}<div class="p-3 sm:p-4 flex flex-col flex-1"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><h3 class="text-sm sm:text-base font-black text-[#071a3b] leading-tight line-clamp-2">${esc(e.title)}</h3>${e.organizer_verified?'<span class="inline-flex items-center gap-1 mt-1 text-[9px] font-black text-emerald-600"><i class="fa-solid fa-circle-check"></i> Organisateur vérifié</span>':''}<p class="text-[10px] sm:text-xs text-slate-500 font-semibold mt-1"><i class="fa-regular fa-calendar mr-1"></i>${esc(e.date||'')}</p><p class="text-[10px] sm:text-xs text-slate-500 font-semibold mt-1 truncate"><i class="fa-solid fa-location-dot text-[#F97316] mr-1"></i>${esc(e.city||e.location||'')}</p></div><button onclick="likeEvent(${Number(e.id)},event)" class="shrink-0 w-9 h-9 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:text-[#F97316] hover:border-orange-200 transition" title="J'aime"><i class="${liked?'fa-solid text-[#F97316]':'fa-regular'} fa-heart"></i></button></div><div class="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100"><div><p class="text-[9px] uppercase font-black text-slate-400">${free?'ENTRÉE':'À PARTIR DE'}</p><p class="text-sm sm:text-base font-black text-[#071a3b]">${free?'GRATUITE':fmt(price)+' FCFA'}</p></div><div class="flex items-center gap-1 text-[10px] font-bold text-slate-400"><i class="fa-solid fa-heart text-[#F97316]"></i><span class="like-count">${Number(e.like_count||0)}</span></div></div><div class="flex gap-2 mt-3">${!sold?`<button onclick="openBuyModal(${Number(e.id)})" class="flex-1 bg-[#F97316] hover:bg-orange-600 text-white font-bold px-3 py-2 rounded-xl text-[10px] sm:text-xs transition">${free?'Participer':'Acheter'}</button>`:''}<button onclick="openEventDetails(${Number(e.id)})" class="flex-1 border border-slate-200 rounded-xl text-slate-600 hover:text-[#F97316] font-bold px-2 py-2 text-[10px] sm:text-xs transition">Détails</button><button onclick="shareEvent(${Number(e.id)},'${encodeURIComponent(`${location.origin}${location.pathname}?event=${e.id}`)}')" class="w-10 h-9 border border-slate-200 rounded-xl text-slate-500 hover:text-[#F97316] transition" title="Partager"><i class="fa-solid fa-share-nodes"></i></button></div></div></article>`;}
+function renderPublicEvents(){const grid=$('all-events-grid'),upcoming=$('upcoming-events-grid'),empty=$('upcoming-events-empty');if(!grid&&!upcoming)return;const all=(cachedEvents||[]).map(e=>eventCard(e,true)).join('');if(grid){grid.innerHTML=all||'<p class="text-slate-500 text-sm font-semibold">Aucun événement publié.</p>';filterEvents();}if(upcoming){const upcomingEvents=(cachedEvents||[]).slice(0,3);upcoming.innerHTML=upcomingEvents.map(e=>eventCard(e,true)).join('');empty?.classList.toggle('hidden',upcomingEvents.length>0);}}
+function renderTrendingEvents(){const box=$('trending-events-grid');if(!box)return;const arr=[...(cachedEvents||[])].sort((a,b)=>(Number(b.like_count||0)*5+Number(b.sold_count||0)*3)-(Number(a.like_count||0)*5+Number(a.sold_count||0)*3)).slice(0,6);box.innerHTML=arr.map(e=>eventCard(e,true)).join('')||'<p class="text-slate-500 font-semibold">Aucun événement tendance pour le moment.</p>';}
+function populateEventFilters(){const city=$('filter-city'),cat=$('filter-category');const cities=[...new Set((cachedEvents||[]).map(e=>String(e.city||e.location||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));const categories=[...new Set((cachedEvents||[]).map(e=>String(e.category||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));if(city){const current=city.value;city.innerHTML='<option value="ALL">Toutes les villes</option>'+cities.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');if(cities.includes(current))city.value=current;}if(cat){const current=cat.value;cat.innerHTML='<option value="ALL">Toutes catégories</option>'+categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');if(categories.includes(current))cat.value=current;}}
+function filterEvents(){const s=($('search-event')?.value||'').trim().toLowerCase(),cat=$('filter-category')?.value||'ALL',city=$('filter-city')?.value||'ALL',range=$('filter-date')?.value||'ALL',type=$('filter-type')?.value||'ALL',sort=$('filter-sort')?.value||'date';const today=new Date();today.setHours(0,0,0,0);document.querySelectorAll('#all-events-grid > article').forEach(card=>{const title=(card.dataset.title||'').toLowerCase(),c=card.dataset.category||'',ct=card.dataset.city||'',d=card.dataset.date||'',t=card.dataset.type||'PAID';const dt=new Date(d+'T00:00:00');const days=Math.round((dt-today)/86400000);const matchSearch=!s||title.includes(s)||ct.toLowerCase().includes(s);const matchCat=cat==='ALL'||c.toLowerCase()===cat.toLowerCase();const matchCity=city==='ALL'||ct.toLowerCase()===city.toLowerCase();const matchType=type==='ALL'||t===type;const matchRange=range==='ALL'||(range==='TODAY'&&days===0)||(range==='WEEK'&&days>=0&&days<=7)||(range==='MONTH'&&days>=0&&days<=30);card.classList.toggle('hidden',!(matchSearch&&matchCat&&matchCity&&matchType&&matchRange));});const grid=$('all-events-grid');if(grid){const cards=[...grid.children].filter(x=>x.tagName==='ARTICLE'&&!x.classList.contains('hidden'));cards.sort((a,b)=>{const A=cachedEvents.find(e=>String(e.id)===a.dataset.eventId)||{},B=cachedEvents.find(e=>String(e.id)===b.dataset.eventId)||{};if(sort==='likes')return Number(B.like_count||0)-Number(A.like_count||0);if(sort==='trending')return (Number(B.like_count||0)*5+Number(B.sold_count||0)*3)-(Number(A.like_count||0)*5+Number(A.sold_count||0)*3);return String(A.date||'').localeCompare(String(B.date||''));});cards.forEach(x=>grid.appendChild(x));}}
+async function likeEvent(id,ev){ev?.stopPropagation();try{const d=await api(`/api/events/${encodeURIComponent(id)}/like`,{method:'POST',headers:eventApiHeaders()});const e=cachedEvents.find(x=>Number(x.id)===Number(id));if(e){e.liked=d.liked;e.like_count=d.like_count;}renderPublicEvents();renderTrendingEvents();}catch(e){alert(e.message||'Impossible de modifier le like.');}}
+function openEventDetails(eventId){
+ const e=cachedEvents.find(x=>Number(x.id)===Number(eventId)); if(!e)return;
+ const cats=Array.isArray(e.ticket_categories)?e.ticket_categories:[];
+ const price=cats.length?Math.min(...cats.map(c=>Number(c.price||0))):Number(e.price||0);
+ const mapLink=(e.latitude&&e.longitude)?`https://www.google.com/maps?q=${encodeURIComponent(e.latitude+','+e.longitude)}`:'';
+ const old=document.getElementById('event-detail-modal'); if(old)old.remove();
+ const d=document.createElement('div'); d.id='event-detail-modal'; d.className='fixed inset-0 z-[92] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto';
+ const poster=e.image_url?`<img src="${esc(e.image_url)}" alt="${esc(e.title)}" class="w-full h-64 md:h-80 object-cover">`:`<div class="w-full h-64 md:h-80 bg-gradient-to-br from-[#071a3b] to-[#102d5e] flex items-center justify-center"><img src="logo.png" class="w-24 h-24 object-contain opacity-80" alt="Ticketora"></div>`;
+ const rows=cats.map(c=>`<div class="flex items-center justify-between gap-3 border border-slate-200 rounded-xl px-3 py-2"><span class="font-bold text-slate-800">${esc(c.name)}</span><span class="font-black text-[#071a3b]">${fmt(c.price)} FCFA <small class="font-semibold text-slate-400">· stock ${Math.max(0,Number(c.total_stock||0)-Number(c.sold_count||0))}</small></span></div>`).join('');
+ d.innerHTML=`<div class="bg-white w-full max-w-3xl rounded-3xl overflow-hidden shadow-2xl my-6"><div class="relative">${poster}<button aria-label="Retour" onclick="this.closest('#event-detail-modal').remove();history.replaceState({},'',location.pathname+location.hash)" class="absolute top-4 left-4 px-4 h-10 rounded-full bg-black/60 text-white flex items-center justify-center gap-2 font-bold"><i class="fa-solid fa-arrow-left"></i><span>Retour</span></button><button aria-label="Fermer" onclick="this.closest('#event-detail-modal').remove();history.replaceState({},'',location.pathname+location.hash)" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button></div><div class="p-6 md:p-7"><div class="flex flex-wrap items-center gap-2"><span class="text-[10px] font-black uppercase bg-orange-50 text-[#F97316] px-2 py-1 rounded-full">${esc(e.category||'Événement')}</span>${e.organizer_verified?'<span class="text-[10px] font-black uppercase bg-emerald-50 text-emerald-600 px-2 py-1 rounded-full"><i class="fa-solid fa-circle-check mr-1"></i>Vérifié</span>':''}</div><h2 class="text-3xl font-black text-[#071a3b] mt-3">${esc(e.title)}</h2><div class="grid sm:grid-cols-2 gap-3 mt-4 text-sm"><div class="bg-slate-50 rounded-xl p-3"><b class="text-slate-800">Date</b><p class="text-slate-500 mt-1">${esc(e.date||'')}</p></div><div class="bg-slate-50 rounded-xl p-3"><b class="text-slate-800">Lieu</b><p class="text-slate-500 mt-1">${esc(e.venue_name||e.location||e.city||'')}</p></div><div class="bg-slate-50 rounded-xl p-3"><b class="text-slate-800">Ville</b><p class="text-slate-500 mt-1">${esc(e.city||'')}</p></div><div class="bg-slate-50 rounded-xl p-3"><b class="text-slate-800">Adresse</b><p class="text-slate-500 mt-1">${esc(e.address||e.location||'')}</p></div></div><p class="text-slate-600 leading-7 mt-5 whitespace-pre-wrap">${esc(e.description||'Aucune description.')}</p><div class="mt-5"><h3 class="font-black text-[#071a3b]">Billets & tarifs</h3><div class="space-y-2 mt-2">${rows||`<div class="border rounded-xl p-3 flex justify-between"><b>Standard</b><b>${fmt(price)} FCFA</b></div>`}</div></div><div class="flex flex-wrap gap-2 mt-6">${!e.sold_out?`<button onclick="openBuyModal(${Number(e.id)});document.getElementById('event-detail-modal')?.remove()" class="flex-1 min-w-[160px] bg-[#F97316] text-white font-black py-3 rounded-xl">${String(e.event_type||'PAID')==='FREE'?'Participer':'Acheter un billet'}</button>`:'<div class="flex-1 min-w-[160px] bg-red-50 text-red-600 font-black py-3 rounded-xl text-center">SOLD OUT</div>'}<button onclick="shareEvent(${Number(e.id)},'${encodeURIComponent(`${location.origin}${location.pathname}?event=${e.id}`)}')" class="px-5 py-3 border border-slate-200 rounded-xl font-bold text-slate-700">Partager</button>${mapLink?`<a href="${mapLink}" target="_blank" rel="noopener" class="px-5 py-3 border border-slate-200 rounded-xl font-bold text-slate-700">Voir sur la carte</a>`:''}<button onclick="this.closest('#event-detail-modal')?.remove();history.replaceState({},'',location.pathname+location.hash)" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black"><i class="fa-solid fa-arrow-left mr-2"></i>Retour aux événements</button></div></div></div>`;
+ document.body.appendChild(d);
+ history.replaceState({},'',`${location.pathname}?event=${encodeURIComponent(e.id)}`);
+}
+function openBuyModal(eventId){activeBuyingEvent=cachedEvents.find(e=>Number(e.id)===Number(eventId));if(!activeBuyingEvent)return;let cats=Array.isArray(activeBuyingEvent.ticket_categories)?activeBuyingEvent.ticket_categories:[];if(!cats.length)cats=[{name:'Standard',price:Number(activeBuyingEvent.price||0),total_stock:Number(activeBuyingEvent.capacity||0),max_per_order:10}];activeBuyingCategory=cats[0];activeBuyQuantity=1;const sel=$('buy-ticket-type');sel.innerHTML=cats.map(c=>`<option value="${esc(c.name)}">${esc(c.name)} — ${fmt(c.price)} FCFA</option>`).join('');sel.onchange=()=>{activeBuyingCategory=cats.find(c=>c.name===sel.value)||cats[0];activeBuyQuantity=1;appliedDiscount=0;appliedPromo=null;$('buy-promo').value='';if($('buy-promo-message'))$('buy-promo-message').innerText='';updateBuyPrice();};appliedDiscount=0;appliedPromo=null;$('buy-promo').value='';if($('buy-promo-message'))$('buy-promo-message').innerText='';updateBuyPrice();$('modal-event-title').innerText=activeBuyingEvent.title;$('buy-step-1').classList.remove('hidden');$('buy-step-2').classList.add('hidden');$('modal-buy-ticket').classList.remove('hidden');}
+function maxBuyQuantity(){const stock=Number(activeBuyingCategory?.total_stock||0),soldCat=Number(activeBuyingCategory?.sold_count||0),sold=Number(activeBuyingEvent?.sold_count||0);const maxOrder=Math.max(1,Number(activeBuyingCategory?.max_per_order||activeBuyingEvent?.max_tickets_per_order||10));const remainingCapacity=Math.max(0,Number(activeBuyingEvent?.capacity||999999)-sold);const remainingStock=stock>0?Math.max(0,stock-soldCat):maxOrder;return Math.max(1,Math.min(maxOrder,remainingStock,remainingCapacity));}
+function changeBuyQuantity(delta){const max=maxBuyQuantity();activeBuyQuantity=Math.max(1,Math.min(max,activeBuyQuantity+delta));updateBuyPrice();}
+function updateBuyPrice(){const q=activeBuyQuantity,base=Number(activeBuyingCategory?.price||0)*q,discount=appliedDiscount,total=Math.max(0,base-discount),fee=customerFeeForClient(total),gross=total+fee;if($('buy-quantity'))$('buy-quantity').innerText=q;if($('buy-stock-note'))$('buy-stock-note').innerText=`Maximum ${maxBuyQuantity()} billet(s) pour cette commande`;if($('buy-total-box'))$('buy-total-box').innerHTML=`<div class="flex justify-between"><span class="text-slate-400">Sous-total</span><b>${fmt(base)} FCFA</b></div>${discount?`<div class="flex justify-between text-emerald-400 mt-1"><span>Réduction</span><b>-${fmt(discount)} FCFA</b></div>`:''}<div class="flex justify-between text-slate-400 mt-1"><span>Frais Tchin (5%)</span><b>${fmt(fee)} FCFA</b></div><div class="flex justify-between text-lg font-black text-white mt-2 pt-2 border-t border-slate-700"><span>Total à payer</span><b>${fmt(gross)} FCFA</b></div>`;}
+function customerFeeForClient(amount){return Math.round(Number(amount||0)*0.05);}
+
+function closeBuyModal(){if(paymentPollTimer)clearInterval(paymentPollTimer);$('modal-buy-ticket').classList.add('hidden');}
+async function applyPromoCode(){const p=($('buy-promo')?.value||'').trim().toUpperCase(),email=($('buy-email')?.value||'').trim().toLowerCase();if(!p)return alert('Entrez un code promo.');if(!email)return alert('Entrez d’abord votre email pour vérifier les limites d’utilisation.');if(!activeBuyingEvent||!activeBuyingCategory)return;try{const d=await api('/api/promos/validate',{method:'POST',body:JSON.stringify({eventId:activeBuyingEvent.id,ticketType:activeBuyingCategory.name,email,code:p,baseAmount:Number(activeBuyingCategory.price||0)*activeBuyQuantity})});appliedPromo=d;appliedDiscount=0;updateBuyPrice();const box=$('buy-promo-message');if(box){box.className='text-xs mt-2 text-emerald-400 font-bold';box.innerText=`✓ ${d.code} appliqué : -${fmt(d.discount)} FCFA`;} }catch(e){appliedPromo=null;appliedDiscount=0;updateBuyPrice();const box=$('buy-promo-message');if(box){box.className='text-xs mt-2 text-rose-400 font-bold';box.innerText=e.message;}else alert(e.message);}}
+
+function ensurePaymentAnimationStyles(){
+  if(document.getElementById('ticketora-payment-animation-styles'))return;
+  const style=document.createElement('style');style.id='ticketora-payment-animation-styles';
+  style.textContent=`
+    .tr-overlay{display:flex;align-items:center;justify-content:center;min-height:390px;padding:28px;background:rgba(255,255,255,.98);border-radius:28px;overflow:hidden}
+    .tr-stage{width:min(100%,360px);text-align:center;position:relative}
+    .tr-visual{height:170px;position:relative;display:flex;align-items:center;justify-content:center}
+    .tr-plane{position:absolute;width:94px;height:94px;left:50%;top:50%;transform:translate(-160px,70px) rotate(-12deg) scale(.72);opacity:0;animation:trPlane 1.15s cubic-bezier(.22,.8,.3,1) forwards}
+    .tr-plane svg{width:100%;height:100%;filter:drop-shadow(0 12px 18px rgba(7,26,59,.16))}
+    .tr-ring{position:absolute;width:92px;height:92px;border:5px solid #22c55e;border-radius:50%;opacity:0;transform:scale(.55);animation:trRing .45s 1.02s cubic-bezier(.2,.8,.2,1) forwards}
+    .tr-check{position:absolute;width:54px;height:54px;opacity:0;transform:scale(.65);animation:trCheck .45s 1.05s cubic-bezier(.2,.8,.2,1) forwards}
+    .tr-check path{fill:none;stroke:#22c55e;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:60;stroke-dashoffset:60;animation:trCheckPath .38s 1.12s ease forwards}
+    .tr-fail-ring{border-color:#ef4444;animation-delay:.95s}.tr-fail-check path{stroke:#ef4444;stroke-dasharray:90;stroke-dashoffset:90;animation-delay:1.05s}
+    .tr-title{font-size:25px;font-weight:900;color:#071a3b;margin-top:8px;opacity:0;transform:translateY(8px);animation:trText .45s 1.18s ease forwards}
+    .tr-subtitle{font-size:14px;color:#64748b;margin-top:8px;line-height:1.6;opacity:0;transform:translateY(8px);animation:trText .45s 1.28s ease forwards}
+    @keyframes trPlane{0%{opacity:0;transform:translate(-160px,70px) rotate(-18deg) scale(.72)}12%{opacity:1}58%{opacity:1;transform:translate(-5px,-8px) rotate(-2deg) scale(1)}78%{opacity:1;transform:translate(38px,-28px) rotate(7deg) scale(.88)}100%{opacity:0;transform:translate(78px,-58px) rotate(14deg) scale(.45)}}
+    @keyframes trRing{to{opacity:1;transform:scale(1)}}
+    @keyframes trCheck{to{opacity:1;transform:scale(1)}}
+    @keyframes trCheckPath{to{stroke-dashoffset:0}}
+    @keyframes trText{to{opacity:1;transform:none}}
+    @media(prefers-reduced-motion:reduce){.tr-plane,.tr-ring,.tr-check,.tr-title,.tr-subtitle,.tr-check path{animation:none!important}.tr-plane{opacity:0}.tr-ring,.tr-check{opacity:1;transform:none}.tr-check path{stroke-dashoffset:0}.tr-title,.tr-subtitle{opacity:1;transform:none}}
+  `;document.head.appendChild(style);
+}
+function paymentTransitionHTML(title,subtitle,success=true){
+  const ringClass=success?'tr-ring':'tr-ring tr-fail-ring';
+  const checkClass=success?'tr-check':'tr-check tr-fail-check';
+  const stroke=success?'#22c55e':'#ef4444';
+  return `<div class="tr-overlay"><div class="tr-stage"><div class="tr-visual">
+    <div class="tr-plane" aria-hidden="true"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M8 50 91 13 61 88 46 57 8 50Z" fill="#F97316"/><path d="M8 50 91 13 46 57 8 50Z" fill="#ffb36f"/><path d="M46 57 61 88 55 54 91 13Z" fill="#e85d04"/></svg></div>
+    <div class="${ringClass}" aria-hidden="true"></div><svg class="${checkClass}" viewBox="0 0 54 54" aria-hidden="true"><path d="M10 28 22 39 45 14" stroke="${stroke}"/></svg>
+  </div><div class="tr-title">${esc(title)}</div><div class="tr-subtitle">${esc(subtitle)}</div></div></div>`;
+}
+function playPaymentTransition(container,title,subtitle,done,success=true){
+  if(!container)return;ensurePaymentAnimationStyles();container.innerHTML=paymentTransitionHTML(title,subtitle,success);setTimeout(()=>{try{done&&done()}catch(e){console.error(e)}},1900);
+}
+function retryTicketPayment(){
+  const raw=sessionStorage.getItem('ticketora_pending_purchase');if(!raw){closeBuyModal();return;}
+  try{const p=JSON.parse(raw);history.replaceState({},'',location.pathname);if(p.eventId)openBuyModal(p.eventId);setTimeout(()=>{if($('buy-name'))$('buy-name').value=p.name||'';if($('buy-email'))$('buy-email').value=p.email||'';if($('buy-phone'))$('buy-phone').value=p.phone||'';if($('buy-promo'))$('buy-promo').value=p.promo||'';if(p.ticketType&&$('buy-ticket-type')){$('buy-ticket-type').value=p.ticketType;$('buy-ticket-type').dispatchEvent(new Event('change'));}},0);}catch{closeBuyModal();}
+}
+function restoreCagnotteContributionForm(){const panel=$('modal-cagnotte')?.querySelector('.bg-white');if(!panel)return;panel.innerHTML=`<button onclick="closeCagnotteModal()" class="absolute top-4 right-4 text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button><div class="w-12 h-12 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-hand-holding-heart"></i></div><h3 id="cag-modal-title" class="text-2xl font-black text-[#071a3b] mt-4"></h3><p id="cag-modal-desc" class="text-sm text-slate-500 mt-2"></p><div class="mt-5 space-y-3"><input id="cag-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Votre nom (facultatif)"><input id="cag-email" type="email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" placeholder="Email (facultatif)"><input id="cag-amount" type="number" min="100" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-bold" placeholder="Montant de votre contribution en FCFA"><div id="cag-payment-slider" class="pay-slider pay-slider-orange" data-pay-action="contributeCagnotte"><span class="pay-slider-track">Glisser pour payer</span><span class="pay-slider-handle"><i class="fa-solid fa-arrow-right"></i></span></div><p class="text-[11px] text-slate-400">Le montant n’est pas fixé par la cagnotte : vous choisissez librement votre contribution (minimum 100 FCFA pour le paiement).</p></div>`;}
+function retryCagnotteContribution(){
+  const raw=sessionStorage.getItem('ticketora_pending_cagnotte');if(!raw){closeCagnotteModal();return;}
+  try{const p=JSON.parse(raw);history.replaceState({},'',location.pathname);restoreCagnotteContributionForm();const g=cachedCagnottes.find(x=>Number(x.id)===Number(p.cagnotteId));if(g)activeCagnotte=g;if(activeCagnotte){$('cag-modal-title').innerText=activeCagnotte.title;$('cag-modal-desc').innerText=activeCagnotte.description;$('cag-name').value=p.name||'';$('cag-email').value=p.email||'';$('cag-amount').value=p.amount||'';$('modal-cagnotte').classList.remove('hidden');window.initPaymentSliders?.();}}catch{closeCagnotteModal();}
+}
+
+async function processPayment(){if(!activeBuyingEvent||!activeBuyingCategory)return;const name=$('buy-name').value.trim(),email=$('buy-email').value.trim(),phone=$('buy-phone').value.trim(),promo=$('buy-promo').value.trim().toUpperCase();if(!name||!email||!phone){resetPaySlider('ticket-payment-slider');return alert('Veuillez remplir tous les champs.');}try{sessionStorage.setItem('ticketora_pending_purchase',JSON.stringify({eventId:activeBuyingEvent.id,name,email,phone,ticketType:activeBuyingCategory.name,quantity:activeBuyQuantity,promo}));const d=await api('/api/payments/create',{method:'POST',body:JSON.stringify({eventId:activeBuyingEvent.id,name,email,phone,ticketType:activeBuyingCategory.name,quantity:activeBuyQuantity,promo})});if(d.free&&d.tickets){sessionStorage.removeItem('ticketora_pending_purchase');$('modal-buy-ticket')?.classList.remove('hidden');$('buy-step-1')?.classList.add('hidden');$('buy-step-2')?.classList.remove('hidden');renderTickets(d.tickets,true);return;}if(d.payment_url)window.location.href=d.payment_url;else throw new Error('Lien de paiement indisponible.');}catch(e){resetPaySlider('ticket-payment-slider');alert(e.message);}}
+
+function setupPaymentReturn(){const q=new URLSearchParams(location.search);const token=q.get('token');const reference=q.get('reference');const mode=q.get('payment');if((!token&&!reference)||mode!=='return')return;ensurePaymentAnimationStyles();showSection('client-events');$('modal-buy-ticket').classList.remove('hidden');$('buy-step-1').classList.add('hidden');$('buy-step-2').classList.remove('hidden');const box=$('buy-step-2');box.innerHTML='<div class="tr-overlay"><div class="tr-stage"><div class="tr-visual"><div class="tr-plane" aria-hidden="true"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M8 50 91 13 61 88 46 57 8 50Z" fill="#F97316"/><path d="M8 50 91 13 46 57 8 50Z" fill="#ffb36f"/><path d="M46 57 61 88 55 54 91 13Z" fill="#e85d04"/></svg></div></div><div class="tr-title" style="opacity:1;transform:none">Confirmation du paiement</div><div class="tr-subtitle" style="opacity:1;transform:none">Ticketora vérifie la confirmation réelle de votre paiement.</div></div></div>';let tries=0;let busy=false;const check=async()=>{if(busy)return;busy=true;tries++;try{const endpoint=token?`/api/payments/${encodeURIComponent(token)}/status`:`/api/payments/reference/${encodeURIComponent(reference)}/status`;const d=await api(endpoint);if(d.paid&&(d.tickets?.length||d.ticket)){clearInterval(paymentPollTimer);sessionStorage.removeItem('ticketora_pending_purchase');playPaymentTransition(box,'Paiement réussi','Votre paiement a été confirmé. Votre billet est prêt.',()=>renderTickets(d.tickets||d.ticket),true);return;}if(['cancelled','failed'].includes(String(d.status))||tries>=90){clearInterval(paymentPollTimer);playPaymentTransition(box,'Paiement échoué','Le paiement n’a pas été confirmé. Vous pouvez réessayer.',()=>{box.innerHTML='<div class="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-6 text-center"><p class="text-rose-500 font-black text-xl">Paiement échoué</p><p class="text-sm text-slate-500 mt-2">Aucun billet n’a été délivré.</p><button onclick="retryTicketPayment()" class="mt-5 bg-[#F97316] hover:bg-orange-600 text-white font-black px-5 py-3 rounded-xl">Réessayer</button></div>';},false);}}catch(e){if(tries>=90){clearInterval(paymentPollTimer);box.innerHTML='<div class="bg-rose-50 border border-rose-200 rounded-2xl p-6 text-center"><p class="text-rose-500 font-black text-xl">Vérification impossible</p><p class="text-sm text-slate-500 mt-2">Réessayez dans quelques instants.</p><button onclick="retryTicketPayment()" class="mt-5 bg-[#F97316] text-white font-black px-5 py-3 rounded-xl">Réessayer</button></div>';}}finally{busy=false;}};check();paymentPollTimer=setInterval(check,4000);}
+
+function ticketImageUrl(code){return `${API}/api/tickets/${encodeURIComponent(code)}/image`;}
+async function downloadTicketImage(code){
+  try{
+    const r=await fetch(ticketImageUrl(code),{credentials:'include'});if(!r.ok)throw new Error('Téléchargement impossible.');
+    const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`Ticketora_${code}.png`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+  }catch(e){window.open(ticketImageUrl(code),'_blank');}
+}
+function openWhatsAppTicketData(encoded){try{openWhatsAppTicket(JSON.parse(decodeURIComponent(encoded)));}catch{alert('Impossible de préparer le partage WhatsApp.');}}
+function openWhatsAppTicket(ticket){
+  const phone=String(ticket.customer_phone||'').replace(/[^0-9]/g,'');
+  const link=ticketImageUrl(ticket.code);
+  const text=`Bonjour ${ticket.customer_name||''}, voici votre billet Ticketora pour ${ticket.event_title||'votre événement'} : ${link}`;
+  const url=phone?`https://wa.me/${phone}?text=${encodeURIComponent(text)}`:`https://wa.me/?text=${encodeURIComponent(text)}`;
+  window.open(url,'_blank','noopener');
+}
+function renderTickets(tickets,free=false){
+  const rows=Array.isArray(tickets)?tickets:(tickets?[tickets]:[]),box=$('buy-step-2');if(!box)return;
+  box.innerHTML=`<div class="space-y-5 text-center"><div class="bg-white border border-emerald-100 rounded-3xl p-5 sm:p-7 shadow-sm"><div class="text-4xl"></div><h3 class="text-2xl sm:text-3xl font-black text-[#071a3b] mt-2">Paiement confirmé !</h3><p class="text-sm sm:text-base text-slate-500 mt-2">Votre billet a été généré avec succès.</p><p class="text-xs text-slate-400 mt-1">${rows.length>1?'Vos billets sont prêts. Chaque billet possède un QR Code unique.':'Votre billet est prêt. Le QR Code est unique et sera contrôlé à l’entrée.'}</p></div><div class="space-y-5">${rows.map((t,i)=>{const image=ticketImageUrl(t.code);return `<div class="bg-white rounded-3xl border border-slate-200 shadow-lg overflow-hidden"><div class="px-4 pt-4 text-left text-xs font-bold text-slate-400">Billet ${i+1}/${rows.length}</div><div class="p-3 sm:p-5"><img src="${image}" alt="Billet Ticketora ${esc(t.code)}" class="ticketora-generated-ticket w-full h-auto block rounded-xl" loading="eager"></div><div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 sm:p-5 pt-0"><button onclick="downloadTicketImage('${esc(t.code)}')" class="bg-[#F97316] hover:bg-orange-600 text-white font-black py-3.5 rounded-xl transition flex items-center justify-center gap-2"><i class="fa-solid fa-download"></i> Télécharger mon ticket</button><button onclick="openWhatsAppTicketData('${encodeURIComponent(JSON.stringify(t))}')" class="bg-emerald-500 hover:bg-emerald-600 text-white font-black py-3.5 rounded-xl transition flex items-center justify-center gap-2"><i class="fa-brands fa-whatsapp text-xl"></i> Recevoir sur WhatsApp</button></div></div>`}).join('')}</div><div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs text-slate-500">Merci d’avoir choisi <strong class="text-[#071a3b]">Ticketora</strong>. Conservez votre billet et présentez le QR Code à l’entrée.</div></div>`;
+}
+
+
+function downloadPDF(){const el=$('ticket-pdf-area');if(!el)return;html2pdf().set({margin:0,filename:`Billet_${$('ticket-code-display')?.innerText||'Ticketora'}.pdf`,image:{type:'jpeg',quality:.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff'},jsPDF:{unit:'px',format:[1200,560],orientation:'landscape'}}).from(el).save();}
+async function verifyTicketPublic(){const code=($('public-scan-input')?.value||'').trim().toUpperCase(),r=$('public-scan-result');if(!code){r.innerHTML='<div class="p-3 bg-amber-500/10 text-amber-400 rounded-xl text-xs font-bold">Saisissez un code.</div>';return;}try{const d=await api(`/api/tickets/verify/${encodeURIComponent(code)}`);r.innerHTML=`<div class="p-4 rounded-xl ${d.status==='VALID'?'bg-emerald-500/10 text-emerald-400':'bg-amber-500/10 text-amber-400'} text-xs font-bold">${esc(d.message)}<br><span class="font-normal">${esc(d.ticket?.event_title||'')}</span></div>`;}catch(e){r.innerHTML='<div class="p-4 bg-red-500/10 text-red-400 rounded-xl text-xs font-bold">BILLET NON VALIDE</div>';}}
+
+// Organisateur
+function toggleOrgAuth(mode){$('form-org-login-box').classList.toggle('hidden',mode!=='login');$('form-org-register-box').classList.toggle('hidden',mode!=='register');$('tab-org-login').className=`w-1/2 text-center pb-2 font-bold text-sm ${mode==='login'?'text-[#F97316] border-b-2 border-[#F97316]':'text-slate-400'}`;$('tab-org-register').className=`w-1/2 text-center pb-2 font-bold text-sm ${mode==='register'?'text-[#F97316] border-b-2 border-[#F97316]':'text-slate-400'}`;}
+function msg(id,text,ok=false){const e=$(id);e.innerText=text;e.className=`text-xs p-3 rounded-xl text-center font-semibold ${ok?'bg-emerald-500/10 text-emerald-400':'bg-rose-500/10 text-rose-400'}`;e.classList.remove('hidden');}
+async function handleOrgLogin(e){e.preventDefault();try{const d=await api('/api/organizers/login',{method:'POST',body:JSON.stringify({email:$('login-org-email').value,password:$('login-org-password').value})});$('org-auth-screen').classList.add('hidden');$('org-dashboard-screen').classList.remove('hidden');$('active-org-name').innerText=d.organizer.nom;renderOrgPartnerCertification(d.organizer);if($('generator-login'))$('generator-login').value=d.organizer.email||d.organizer.nom;await refreshOrgData();}catch(err){msg('org-login-message',err.message);}}
+async function handleOrgRegister(e){e.preventDefault();try{await api('/api/organizers/request',{method:'POST',body:JSON.stringify({nom:$('reg-org-name').value,prenom:'',email:$('reg-org-email').value,phone:$('reg-org-phone').value,password:$('reg-org-password').value})});msg('org-register-message','Demande envoyée. Attendez la validation de Ticketora.',true);e.target.reset();}catch(err){msg('org-register-message',err.message);}}
+async function checkOrgSession(){if(!$('org-auth-screen')||!$('org-dashboard-screen'))return;try{const d=await api('/api/organizers/me');if(d.success){$('org-auth-screen').classList.add('hidden');$('org-dashboard-screen').classList.remove('hidden');$('active-org-name').innerText=d.organizer.nom;renderOrgPartnerCertification(d.organizer);if($('generator-login'))$('generator-login').value=d.organizer.email||d.organizer.nom;await refreshOrgData();}}catch{}}
+function renderOrgPartnerCertification(partner){
+  const box=$('org-partner-certification');if(!box)return;const active=Boolean(partner?.is_partner);box.classList.toggle('hidden',!active);if(!active)return;
+  const date=$('org-partner-cert-date');if(date){const raw=partner.partner_since;date.innerText=raw?`Partenaire officiel depuis le ${new Date(raw).toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}.`:'Partenaire officiel Ticketora.';}
+}
+function switchOrgSection(sec){['stats','events','generate-ticket','promos','payouts','scanner','agents','settings','chat','participants','tickets','live','meeting'].forEach(x=>$(`org-sec-${x}`)?.classList.add('hidden'));$(`org-sec-${sec}`)?.classList.remove('hidden');if(sec==='events')loadOrgEvents();if(sec==='promos'){loadOrgPromos();populatePromoEvents();}if(sec==='stats')refreshOrgData();if(sec==='chat')loadOrgChat();if(sec==='agents')loadScannerAgents();if(sec==='participants'||sec==='reports')populateOrgReportEvents();if(sec==='generate-ticket')initTicketGenerator();if(sec==='tickets'){populateOrgReportEvents();setTimeout(populateOrgTicketsEvents,100);}if(sec==='live'){loadOrgLive();}if(sec==='meeting'){loadOrgMeetings();}}
+let eventMap=null,eventMarker=null;
+function initEventMap(lat=6.13,lon=1.22){const box=$('event-map');if(!box||typeof L==='undefined')return;setTimeout(()=>{if(eventMap){eventMap.invalidateSize();return;}eventMap=L.map(box).setView([lat,lon],13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(eventMap);eventMap.on('click',e=>setEventCoords(e.latlng.lat,e.latlng.lng));if(lat&&lon)setEventCoords(lat,lon);},50);}
+function setEventCoords(lat,lon){$('event-latitude').value=Number(lat).toFixed(7);$('event-longitude').value=Number(lon).toFixed(7);if(eventMap){if(eventMarker)eventMarker.setLatLng([lat,lon]);else eventMarker=L.marker([lat,lon]).addTo(eventMap);eventMap.setView([lat,lon],15);}}
+function useMyLocation(){if(!navigator.geolocation)return alert('La géolocalisation n’est pas disponible.');navigator.geolocation.getCurrentPosition(pos=>setEventCoords(pos.coords.latitude,pos.coords.longitude),()=>alert('Impossible d’obtenir votre position. Vérifiez les autorisations du navigateur.'),{enableHighAccuracy:true,timeout:10000});}
+function editOrgEvent(id){const e=(window.orgEventsCache||[]).find(x=>Number(x.id)===Number(id));if(!e)return;const box=$('org-event-form-box');if(box.classList.contains('hidden'))box.classList.remove('hidden');$('event-id').value=e.id;$('event-title').value=e.title||'';$('event-category').value=e.category||'Concert';$('event-type').value=e.event_type||'PAID';$('event-date').value=(e.date||'').slice(0,10);$('event-location').value=e.location||'';$('event-venue').value=e.venue_name||'';$('event-city').value=e.city||'';$('event-address').value=e.address||'';$('event-latitude').value=e.latitude??'';$('event-longitude').value=e.longitude??'';$('event-desc').value=e.description||'';$('event-max-order').value=e.max_tickets_per_order||10;const c=$('ticket-categories-container');c.innerHTML='';(Array.isArray(e.ticket_categories)?e.ticket_categories:[]).forEach(x=>addTicketCategoryRow(x));toggleFreeEventMode();initEventMap(Number(e.latitude)||6.13,Number(e.longitude)||1.22);window.scrollTo({top:0,behavior:'smooth'});}
+function toggleEventForm(){const box=$('org-event-form-box');box.classList.toggle('hidden');if(!box.classList.contains('hidden')){if(!$('ticket-categories-container').children.length)addTicketCategoryRow();initEventMap(Number($('event-latitude')?.value)||6.13,Number($('event-longitude')?.value)||1.22);}}
+function addTicketCategoryRow(data={}){const c=$('ticket-categories-container'),id='cat_'+Date.now()+Math.floor(Math.random()*1000);c.insertAdjacentHTML('beforeend',`<div id="${id}" class="flex gap-3 items-center bg-slate-50 p-3 rounded-xl border border-slate-200"><input type="text" placeholder="Nom (ex: VIP)" class="cat-name w-1/3 bg-white border rounded-lg p-2 text-xs" value="${esc(data.name||'')}" required><input type="number" min="0" placeholder="Prix (FCFA)" class="cat-price w-1/4 bg-white border rounded-lg p-2 text-xs" value="${data.price??''}" required><input type="number" min="0" placeholder="Quantité / Stock" class="cat-stock w-1/4 bg-white border rounded-lg p-2 text-xs" value="${data.total_stock??''}" required><input type="number" min="1" max="50" placeholder="Max/commande" class="cat-max w-1/5 bg-white border rounded-lg p-2 text-xs" value="${data.max_per_order??10}" required><button type="button" onclick="document.getElementById('${id}').remove()" class="text-red-500 hover:text-red-700 p-2"><i class="fa-solid fa-trash text-xs"></i></button></div>`);}
+function collectCats(){return [...document.querySelectorAll('#ticket-categories-container > div')].map(r=>({name:r.querySelector('.cat-name').value.trim(),price:Number(r.querySelector('.cat-price').value),total_stock:Number(r.querySelector('.cat-stock').value),max_per_order:Number(r.querySelector('.cat-max')?.value||10)})).filter(x=>x.name);}
+async function saveEvent(e){e.preventDefault();const id=$('event-id').value;const eventType=$('event-type')?.value||'PAID';const cats=collectCats();if(eventType==='PAID'&&!cats.length)return alert('Ajoutez au moins une catégorie.');const file=$('event-image')?.files?.[0];let imageUrl='';if(file){if(file.size>1500000)return alert('Affiche trop lourde. Maximum 1,5 Mo.');imageUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Impossible de lire l’affiche.'));r.readAsDataURL(file);});}const venueName=$('event-venue')?.value.trim()||'',city=$('event-city')?.value.trim()||'',address=$('event-address')?.value.trim()||'',latitude=$('event-latitude')?.value||'',longitude=$('event-longitude')?.value||'';if(!city)return alert('Veuillez renseigner la ville.');const body={title:$('event-title').value,category:$('event-category').value,date:$('event-date').value,location:$('event-location').value||venueName||city,venueName,city,address,latitude,longitude,description:$('event-desc').value,price:cats[0].price,capacity:cats.reduce((s,c)=>s+c.total_stock,0),ticketCategories:cats,maxTicketsPerOrder:Number($('event-max-order')?.value||10),imageUrl,eventType};try{const d=await api(id?`/api/organizers/events/${id}`:'/api/organizers/events',{method:id?'PUT':'POST',body:JSON.stringify(body)});alert(d.message||'Événement enregistré.');toggleEventForm();await refreshOrgData();}catch(err){alert(err.message);}}
+async function loadOrgEvents(){try{const d=await api('/api/organizers/events');window.orgEventsCache=d.events||[];const list=$('org-my-events-list');list.innerHTML=(d.events||[]).map(e=>`<tr class="border-b text-sm"><td class="p-4 font-bold">${esc(e.title)}</td><td class="p-4 text-slate-500">${esc(e.date)}</td><td class="p-4 font-bold">${fmt(e.price)} FCFA</td><td class="p-4"><span class="px-2 py-1 rounded text-[10px] font-bold ${e.status==='PUBLIE'?'bg-emerald-100 text-emerald-700':e.status==='REFUSE'?'bg-red-100 text-red-700':'bg-amber-100 text-amber-700'}">${esc(e.status)}</span></td><td class="p-4 text-xs text-slate-500">${fmt(e.sold_count)} / ${fmt(e.capacity)} vendu(s)${Number(e.capacity)>0&&Number(e.sold_count)>=Number(e.capacity)?'<div class="text-red-600 font-black mt-1">SOLD OUT</div>':''}</td><td class="p-4 text-right"><div class="flex flex-wrap justify-end gap-2">${e.status==='PUBLIE'&&Number(e.capacity)>0&&Number(e.sold_count)>=Number(e.capacity)?`<button onclick="addTicketsOrg(${e.id})" class="text-xs bg-[#F97316] text-white px-3 py-1.5 rounded-lg font-bold"><i class="fa-solid fa-plus"></i> Ajouter des tickets</button>`:''}<button onclick="deleteOrgEvent(${e.id})" class="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg font-bold"><i class="fa-solid fa-trash"></i> Supprimer</button></div></td></tr>`).join('')||'<tr><td colspan="6" class="p-6 text-center text-slate-400">Aucun événement.</td></tr>';}catch(err){console.error(err);}}
+async function renderOrgSalesChart(d={events:[],daily:[],topEvents:[]}){
+ const canvas=$('org-sales-chart'); if(!canvas||!window.Chart)return;
+ if(window.ticketoraOrgChart)window.ticketoraOrgChart.destroy();
+ const daily=d.daily||[];
+ window.ticketoraOrgChart=new Chart(canvas,{type:'line',data:{labels:daily.map(x=>new Date(x.day).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})),datasets:[{label:'Billets vendus',data:daily.map(x=>Number(x.tickets||0)),tension:.35,fill:false},{label:'Revenus organisateur',data:daily.map(x=>Number(x.revenue||0)),tension:.35,yAxisID:'y1',hidden:true}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true}},scales:{y:{beginAtZero:true,ticks:{precision:0}},y1:{beginAtZero:true,position:'right',grid:{drawOnChartArea:false}}}}});
+ const top=d.topEvents||[]; const box=$('org-top-events'); if(box)box.innerHTML=top.length?top.map(e=>`<div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0"><div class="min-w-0"><p class="font-bold text-slate-800 truncate">${esc(e.title)}</p><p class="text-[11px] text-slate-400">${Number(e.used||0)} entrée(s) validée(s)</p></div><div class="text-right"><p class="font-black text-slate-900">${Number(e.tickets||0)}</p><p class="text-[11px] text-slate-400">billets</p></div></div>`).join(''):'<p class="text-sm text-slate-400">Aucune vente pour le moment.</p>';
+}
+
+function renderOrgPayouts(payouts=[]){
+ const el=$('org-payouts-list');
+ if(!el)return;
+ const rows=Array.isArray(payouts)?payouts:[];
+ el.innerHTML=rows.map(p=>{
+   const status=p.status||'EN_ATTENTE';
+   const cls=status==='PAYE'?'bg-emerald-50 text-emerald-700':status==='REFUSE'?'bg-rose-50 text-rose-700':'bg-amber-50 text-amber-700';
+   const canDelete=['EN_ATTENTE','REFUSE'].includes(status);
+   return `<div class="p-4 border-b border-slate-100 last:border-0 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+     <div><div class="flex items-center gap-2 flex-wrap"><b class="text-slate-800">${fmt(p.amount)} FCFA</b><span class="px-2 py-1 rounded-full text-[10px] font-black ${cls}">${esc(status)}</span></div>
+     <p class="text-xs text-slate-500 mt-1">${esc(p.withdraw_mode||'Retrait')} · ${esc(p.account||'')}</p><p class="text-[10px] text-slate-400 mt-1">${p.created_at?new Date(p.created_at).toLocaleString('fr-FR'):''}</p>
+     ${p.tchin_status?`<p class="text-[10px] text-slate-400 mt-1">Tchin : ${esc(p.tchin_status)}</p>`:''}</div>
+     <div class="flex gap-2">${canDelete?`<button onclick="deleteOrgPayout(${Number(p.id)})" class="px-3 py-2 rounded-lg bg-rose-50 text-rose-600 text-xs font-bold">Supprimer</button>`:''}<button onclick='downloadOrgPayoutPDF(${JSON.stringify(p).replace(/'/g,'&#39;')})' class="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold">PDF</button></div>
+   </div>`;
+ }).join('')||'<div class="p-8 text-center text-sm text-slate-400">Aucune demande de retrait.</div>';
+}
+async function downloadOrgPayoutPDF(p){
+ if(!window.jspdf?.jsPDF){alert('Le module PDF n’est pas chargé.');return;}
+ const {jsPDF}=window.jspdf;
+ const doc=new jsPDF({unit:'mm',format:'a4'});
+ const img=new Image(); img.crossOrigin='anonymous';
+ const draw=()=>{try{doc.addImage(img,'PNG',18,14,18,18);}catch{};doc.setTextColor(7,26,59);doc.setFontSize(22);doc.setFont(undefined,'bold');doc.text('TICKETORA',42,26);doc.setTextColor(100,116,139);doc.setFontSize(10);doc.setFont(undefined,'normal');doc.text('Justificatif officiel de demande de retrait',42,32);doc.setDrawColor(249,115,22);doc.line(18,38,192,38);doc.setTextColor(7,26,59);doc.setFontSize(12);doc.setFont(undefined,'bold');doc.text('Détails du retrait',18,52);const rows=[['ID',p.id||'-'],['Montant',fmt(p.amount)+' FCFA'],['Mode',p.withdraw_mode||'-'],['Compte',p.account||'-'],['Statut',p.status||'-'],['Date de demande',p.created_at?new Date(p.created_at).toLocaleString('fr-FR'):'-'],['Date de traitement',p.processed_at?new Date(p.processed_at).toLocaleString('fr-FR'):'-']];let y=64;doc.setFontSize(10);rows.forEach(([k,v])=>{doc.setFont(undefined,'bold');doc.setTextColor(100,116,139);doc.text(k,18,y);doc.setFont(undefined,'normal');doc.setTextColor(7,26,59);doc.text(String(v),75,y);y+=10;});doc.setDrawColor(226,232,240);doc.line(18,y+5,192,y+5);doc.setFontSize(9);doc.setTextColor(100,116,139);doc.text('Document généré depuis l’espace Organisateur Ticketora.',18,y+15);doc.save(`Ticketora_Retrait_${p.id||'document'}.pdf`);};
+ img.onload=draw;img.onerror=draw;img.src=location.origin+'/logo.png';
+}
+
+async function refreshOrgData(){try{const d=await api('/api/organizers/stats');const tickets=d.tickets||[],events=d.events||[],payouts=d.payouts||[];renderOrgPartnerCertification(d.partner||{});const available=Number(d.availableBalance??d.netRevenue??0),used=Number(d.usedTickets??tickets.filter(t=>t.used).length),pending=Number(d.pendingPayout??0),rate=Number(d.attendanceRate??(tickets.length?Math.round(used/tickets.length*100):0));$('org-stat-revenue').innerText=fmt(Math.max(0,available))+' FCFA';$('org-stat-tickets').innerText=tickets.length;$('org-stat-events').innerText=events.length;if($('org-stat-used'))$('org-stat-used').innerText=used;if($('org-stat-pending-payout'))$('org-stat-pending-payout').innerText=fmt(pending)+' FCFA';if($('org-stat-attendance'))$('org-stat-attendance').innerText=rate+'%';const perf=Math.min(100,rate);if($('org-performance-bar'))$('org-performance-bar').style.width=perf+'%';if($('org-performance-label'))$('org-performance-label').innerText=`Taux de présence : ${rate}%`;renderOrgPayouts(payouts);renderOrgSalesChart(d);loadOrgEvents();}catch(err){console.error(err);}} 
+
+async function deleteOrgEvent(id){if(!confirm('Supprimer définitivement cet événement ?'))return;try{await api(`/api/organizers/events/${id}`,{method:'DELETE'});alert('Événement supprimé.');await refreshOrgData()}catch(e){alert(e.message)}}
+async function deleteOrgPayout(id){if(!confirm('Supprimer cette demande de retrait ?'))return;try{await api(`/api/payouts/${id}`,{method:'DELETE'});alert('Demande supprimée.');await refreshOrgData()}catch(e){alert(e.message)}}
+async function requestPayout(){const amount=Number($('payout-amount').value),account=$('payout-account').value.trim(),withdrawMode=$('payout-mode')?.value||'';if(!amount||!account||!withdrawMode)return alert('Veuillez remplir tous les champs.');if(amount<200)return alert('Le retrait minimum est de 200 FCFA.');if(!confirm(`Confirmez-vous le retrait de ${fmt(amount)} FCFA vers ${account} via ${$('payout-mode').selectedOptions[0].text} ?\n\nVérifiez bien le numéro : un décaissement Tchin ne peut pas être annulé.`))return;try{const d=await api('/api/payouts',{method:'POST',body:JSON.stringify({amount,account,withdrawMode})});alert('Demande de retrait envoyée à Ticketora. Elle doit être validée par l’administrateur.');$('payout-amount').value='';$('payout-account').value='';await refreshOrgData();}catch(err){alert(err.message);}}
+async function scanTicketOrg(){const code=$('org-scan-input').value.trim().toUpperCase(),r=$('org-scan-result');if(!code)return;r.innerHTML='<div class="p-3 bg-slate-100 rounded-xl text-xs">Vérification…</div>';try{const d=await api('/api/tickets/scan',{method:'POST',body:JSON.stringify({code})});r.innerHTML=`<div class="p-4 bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold">ENTRÉE AUTORISÉE ✅<br><span class="font-normal">${esc(d.ticket?.customer_name||'')}</span></div>`;}catch(err){r.innerHTML=`<div class="p-4 bg-rose-100 text-rose-700 rounded-xl text-xs font-bold">BILLET NON VALIDE ❌<br><span class="font-normal">${esc(err.message)}</span></div>`;}}
+async function updateOrgPassword(e){e.preventDefault();try{const d=await api('/api/organizers/password',{method:'POST',body:JSON.stringify({oldPassword:$('pwd-old').value,newPassword:$('pwd-new').value})});msg('pwd-msg',d.message,true);e.target.reset();}catch(err){msg('pwd-msg',err.message);}}
+async function logoutOrg(){await api('/api/organizers/logout',{method:'POST'});location.reload();}
+
+
+let cachedCagnottes=[];let activeCagnotte=null;let cagPollTimer=null;
+async function fetchPublicCagnottes(){try{const d=await api('/api/cagnottes');cachedCagnottes=d.cagnottes||[];renderPublicCagnottes();}catch(e){console.error(e)}}
+function renderPublicCagnottes(){const grid=$('public-cagnottes-grid'),empty=$('public-cagnottes-empty');if(!grid)return;grid.innerHTML=cachedCagnottes.map(c=>{const imgs=Array.isArray(c.images)?c.images:[];const target=Number(c.target_amount||0),total=Number(c.total_amount||0),pct=target?Math.min(100,Math.round(total*100/target)):0;return `<article class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm flex flex-col">${imgs.length?`<div class="w-full h-48 grid ${imgs.length>1?'grid-cols-2':''} gap-0 bg-slate-100">${imgs.slice(0,4).map((im,i)=>`<img src="${esc(im)}" class="w-full h-48 ${imgs.length>1?'object-cover':''}" alt="${esc(c.title)} ${i+1}">`).join('')}</div>`:`<div class="w-full h-48 bg-gradient-to-br from-[#071a3b] to-[#102d5e] flex items-center justify-center text-white text-4xl"><i class="fa-solid fa-hand-holding-heart"></i></div>`}<div class="p-5 flex-1"><div class="flex items-center justify-between gap-2"><span class="text-[10px] font-black uppercase bg-orange-50 text-[#F97316] px-2 py-1 rounded-full">Cagnotte</span><span class="text-xs text-emerald-600 font-bold">${fmt(total)} FCFA</span></div><h3 class="text-xl font-black text-[#071a3b] mt-3">${esc(c.title)}</h3><p class="text-sm text-slate-500 mt-2 line-clamp-4">${esc(c.description)}</p>${target?`<div class="mt-4"><div class="flex justify-between text-[10px] font-bold text-slate-500"><span>Collecté</span><span>${pct}%</span></div><div class="h-2 bg-slate-100 rounded-full overflow-hidden mt-1"><div class="h-full bg-[#F97316]" style="width:${pct}%"></div></div><div class="text-[10px] text-slate-400 mt-1">Objectif : ${fmt(target)} FCFA</div></div>`:''}</div><div class="p-5 pt-0"><button onclick="openCagnotteModal(${Number(c.id)})" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Contribuer</button></div></article>`}).join('');empty?.classList.toggle('hidden',cachedCagnottes.length>0)}
+function openCagnotteModal(id){activeCagnotte=cachedCagnottes.find(c=>Number(c.id)===Number(id));if(!activeCagnotte)return;$('cag-modal-title').innerText=activeCagnotte.title;$('cag-modal-desc').innerText=activeCagnotte.description;$('cag-amount').value='';$('cag-name').value='';$('cag-email').value='';$('modal-cagnotte').classList.remove('hidden')}
+function closeCagnotteModal(){if(cagPollTimer)clearInterval(cagPollTimer);$('modal-cagnotte')?.classList.add('hidden')}
+async function contributeCagnotte(){if(!activeCagnotte)return;const amount=Number($('cag-amount').value),name=$('cag-name').value.trim(),email=$('cag-email').value.trim();if(!Number.isInteger(amount)||amount<100){resetPaySlider('cag-payment-slider');return alert('Entrez un montant d’au moins 100 FCFA.');}try{sessionStorage.setItem('ticketora_pending_cagnotte',JSON.stringify({cagnotteId:activeCagnotte.id,amount,name,email}));const d=await api(`/api/cagnottes/${activeCagnotte.id}/contribute`,{method:'POST',body:JSON.stringify({amount,name,email})});window.location.href=d.payment_url;}catch(e){resetPaySlider('cag-payment-slider');alert(e.message)}}
+
+function setupCagnotteReturn(){const q=new URLSearchParams(location.search);const token=q.get('token'),mode=q.get('cagnotte');if(!token||mode!=='return')return;ensurePaymentAnimationStyles();showSection('client-home');$('modal-cagnotte')?.classList.remove('hidden');$('cag-modal-title').innerText='Confirmation de contribution';$('cag-modal-desc').innerText='Ticketora vérifie la confirmation réelle de votre paiement…';$('cag-name').value='';$('cag-email').value='';$('cag-amount').value='';let tries=0;cagPollTimer=setInterval(async()=>{tries++;try{const d=await api(`/api/cagnottes/contributions/${encodeURIComponent(token)}/status`);if(d.paid){clearInterval(cagPollTimer);sessionStorage.removeItem('ticketora_pending_cagnotte');const c=d.contribution||{};const amount=Number(c.amount||0);playPaymentTransition($('modal-cagnotte').querySelector('div.bg-white')||$('modal-cagnotte'),'Contribution réussie',`Votre contribution de ${fmt(amount)} FCFA a été confirmée.`,()=>{$('modal-cagnotte').querySelector('.bg-white').innerHTML=`<button onclick="closeCagnotteModal()" class="absolute top-4 right-4 text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button><div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center"><i class="fa-solid fa-check"></i></div><h3 class="text-2xl font-black text-[#071a3b] mt-4">Contribution réussie</h3><p class="text-sm text-slate-500 mt-2">Votre contribution a bien été enregistrée.</p><div class="mt-5 space-y-2 bg-slate-50 rounded-2xl p-4 text-left"><div class="flex justify-between gap-3"><span class="text-slate-500">Montant</span><strong class="text-[#071a3b]">${fmt(amount)} FCFA</strong></div><div class="flex justify-between gap-3"><span class="text-slate-500">Contributeur</span><strong class="text-[#071a3b] text-right">${esc(c.contributor_name||'Anonyme')}</strong></div><div class="flex justify-between gap-3"><span class="text-slate-500">Référence</span><strong class="text-[#071a3b] text-right">${esc(c.reference||token)}</strong></div></div><button onclick="closeCagnotteModal()" class="w-full mt-5 bg-[#F97316] hover:bg-orange-600 text-white font-black py-3 rounded-xl">Fermer</button>`;fetchPublicCagnottes();},true);return;}if(['cancelled','failed','ANNULE'].includes(String(d.status))||tries>=20){clearInterval(cagPollTimer);const modal=$('modal-cagnotte'),panel=modal?.querySelector('.bg-white');if(panel){panel.innerHTML='<div class="p-7 text-center"><div class="text-rose-500 font-black text-xl">Contribution échouée</div><p class="text-sm text-slate-500 mt-2">La contribution n’a pas été confirmée.</p><button onclick="retryCagnotteContribution()" class="mt-5 bg-[#F97316] hover:bg-orange-600 text-white font-black px-5 py-3 rounded-xl">Réessayer</button></div>';}}}catch(e){if(tries>=20){clearInterval(cagPollTimer);const panel=$('modal-cagnotte')?.querySelector('.bg-white');if(panel)panel.innerHTML='<div class="p-7 text-center"><div class="text-rose-500 font-black text-xl">Vérification impossible</div><p class="text-sm text-slate-500 mt-2">Réessayez dans quelques instants.</p><button onclick="retryCagnotteContribution()" class="mt-5 bg-[#F97316] text-white font-black px-5 py-3 rounded-xl">Réessayer</button></div>';}}},4000)}
+
+window.fetchPublicCagnottes=fetchPublicCagnottes;window.openCagnotteModal=openCagnotteModal;window.closeCagnotteModal=closeCagnotteModal;window.contributeCagnotte=contributeCagnotte;
+window.addEventListener('DOMContentLoaded',()=>{if($('client-home')){showSection('client-home');fetchPublicEvents();fetchPublicCagnottes();setupPaymentReturn();setupCagnotteReturn();}checkOrgSession();});
+
+window.showSection = showSection;
+
+window.filterEvents = filterEvents;
+
+window.closeBuyModal = closeBuyModal;
+
+window.applyPromoCode = applyPromoCode;
+
+window.downloadPDF = downloadPDF;
+
+window.toggleOrgAuth = toggleOrgAuth;
+
+window.switchOrgSection = switchOrgSection;
+window.addTicketsOrg=addTicketsOrg;
+
+window.toggleEventForm = toggleEventForm;
+
+window.addTicketCategoryRow = addTicketCategoryRow;
+window.handleOrgLogin = handleOrgLogin;
+window.handleOrgRegister = handleOrgRegister;
+window.saveEvent = saveEvent;
+window.requestPayout = requestPayout;
+window.downloadOrgPayoutPDF = downloadOrgPayoutPDF;
+window.scanTicketOrg = scanTicketOrg;
+window.updateOrgPassword = updateOrgPassword;
+window.logoutOrg = logoutOrg;
+window.openBuyModal = openBuyModal;
+window.openEventDetails = openEventDetails;
+window.likeEvent = likeEvent;
+window.shareEvent = shareEvent;
+window.processPayment = processPayment;
+window.verifyTicketPublic = verifyTicketPublic;
+
+window.deleteOrgEvent=deleteOrgEvent;window.deleteOrgPayout=deleteOrgPayout;
+
+
+async function addTicketsOrg(id){const q=prompt('Combien de tickets supplémentaires voulez-vous ajouter ?','50');if(q===null)return;const additional=Number(q);if(!Number.isInteger(additional)||additional<1)return alert('Entrez un nombre entier supérieur à 0.');try{const d=await api(`/api/organizers/events/${id}/add-capacity`,{method:'POST',body:JSON.stringify({additional})});alert(`${additional} tickets ajoutés. Nouvelle capacité : ${d.event.capacity}.`);await loadOrgEvents();}catch(e){alert(e.message)}}
+
+async function loadOrgPromos(){
+  try{const d=await api('/api/organizers/promos');const el=$('org-promos-list');if(!el)return;el.innerHTML=(d.promos||[]).map(p=>{const used=Number(p.used_count||0),max=p.max_uses?Number(p.max_uses):null;const restriction=p.event_title||'Tous mes événements';const discount=p.discount_type==='PERCENT'?`${p.discount_value}%`:`${fmt(p.discount_value)} FCFA`;const status=p.active?'Actif':'Désactivé';return `<div class="p-4 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div class="min-w-0"><div class="flex items-center gap-2 flex-wrap"><span class="font-mono font-black text-[#F97316] bg-orange-50 px-2 py-1 rounded-lg">${esc(p.code)}</span><span class="text-[10px] font-black uppercase px-2 py-1 rounded-full ${p.active?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-500'}">${status}</span></div><p class="text-sm font-bold text-slate-800 mt-2">-${esc(discount)} • ${esc(restriction)}</p><p class="text-[11px] text-slate-400 mt-1">Utilisations : ${used}${max?` / ${max}`:' / illimité'} • Par client : ${Number(p.max_uses_per_customer)} • Min. : ${fmt(p.min_amount)} FCFA${p.allowed_ticket_types?.length?' • Billet(s) ciblé(s)':''}</p></div><div class="flex gap-2"><button onclick="toggleOrgPromo(${p.id})" class="px-3 py-2 rounded-lg text-xs font-bold ${p.active?'bg-amber-50 text-amber-700':'bg-emerald-50 text-emerald-700'}">${p.active?'Désactiver':'Activer'}</button><button onclick="viewPromoUsage(${p.id},'${esc(p.code)}')" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">Stats</button><button onclick="deleteOrgPromo(${p.id})" class="px-3 py-2 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Supprimer</button></div></div>`}).join('')||'<div class="p-8 text-center text-sm text-slate-400">Aucun code promo créé.</div>';
+  }catch(e){console.error(e)}}
+async function createOrgPromo(e){e.preventDefault();const types=[...document.querySelectorAll('input[name="promo-ticket-type"]:checked')].map(x=>x.value);const body={code:$('promo-code').value,discountType:$('promo-discount-type').value,discountValue:$('promo-discount-value').value,eventId:$('promo-event').value||null,startsAt:$('promo-start').value?new Date($('promo-start').value).toISOString():null,endsAt:$('promo-end').value?new Date($('promo-end').value).toISOString():null,maxUses:$('promo-max-uses').value||null,maxUsesPerCustomer:$('promo-max-per-customer').value||1,minAmount:$('promo-min-amount').value||0,allowedTicketTypes:types};try{const d=await api('/api/organizers/promos',{method:'POST',body:JSON.stringify(body)});alert(d.message||'Code créé.');e.target.reset();$('promo-max-per-customer').value='1';loadOrgPromos();}catch(err){alert(err.message)}}
+async function toggleOrgPromo(id){try{await api(`/api/organizers/promos/${id}/toggle`,{method:'POST'});loadOrgPromos();}catch(e){alert(e.message)}}
+async function deleteOrgPromo(id){if(!confirm('Supprimer ce code promo ?'))return;try{await api(`/api/organizers/promos/${id}`,{method:'DELETE'});loadOrgPromos();}catch(e){alert(e.message)}}
+async function viewPromoUsage(id,code){try{const d=await api(`/api/organizers/promos/${id}/usage`);const rows=d.usage||[];alert(`${code}\n\nUtilisations enregistrées : ${rows.length}\nRéductions accordées : ${fmt(rows.reduce((s,x)=>s+Number(x.discount_amount||0),0))} FCFA\n\n`+rows.slice(0,10).map(x=>`${x.customer_email} — ${fmt(x.discount_amount)} FCFA — ${x.order_status}`).join('\n'));}catch(e){alert(e.message)}}
+async function populatePromoEvents(){const sel=$('promo-event');if(!sel)return;let events=window.orgEventsCache||[];if(!events.length){try{const d=await api('/api/organizers/events');events=d.events||[];window.orgEventsCache=events;}catch(e){console.error(e)}}sel.innerHTML='<option value="">Tous mes événements</option>'+events.map(e=>`<option value="${e.id}">${esc(e.title)}</option>`).join('');renderPromoTicketTypes();}
+function renderPromoTicketTypes(){const box=$('promo-ticket-types'),sel=$('promo-event');if(!box)return;const events=window.orgEventsCache||[];const selected=sel?.value||'';let cats=[];if(selected){const e=events.find(x=>String(x.id)===String(selected));cats=Array.isArray(e?.ticket_categories)?e.ticket_categories:[];}else{cats=events.flatMap(e=>Array.isArray(e.ticket_categories)?e.ticket_categories:[]);}
+const names=[...new Set(cats.map(c=>String(c.name||'').trim()).filter(Boolean))];box.innerHTML=names.map(name=>`<label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg"><input type="checkbox" name="promo-ticket-type" value="${esc(name)}" class="accent-orange-500">${esc(name)}</label>`).join('')||'<span class="text-xs text-slate-400">Aucune catégorie disponible pour cette sélection.</span>';}
+
+window.loadOrgPromos=loadOrgPromos;window.createOrgPromo=createOrgPromo;window.toggleOrgPromo=toggleOrgPromo;window.deleteOrgPromo=deleteOrgPromo;window.viewPromoUsage=viewPromoUsage;window.populatePromoEvents=populatePromoEvents;
+
+async function loadOrgChat(){try{const d=await api('/api/organizers/chat/messages');const el=$('org-chat-messages');if(!el)return;el.innerHTML=(d.messages||[]).map(m=>`<div class="flex ${m.sender_role==='ORGANIZER'?'justify-end':'justify-start'}"><div class="max-w-[75%] rounded-2xl px-4 py-2 ${m.sender_role==='ORGANIZER'?'bg-[#F97316] text-white':'bg-white text-slate-800 border border-slate-200'}"><div class="text-sm whitespace-pre-wrap break-words">${esc(m.message)}</div><div class="text-[9px] opacity-60 mt-1">${new Date(m.created_at).toLocaleString('fr-FR')}</div></div></div>`).join('')||'<div class="text-center text-sm text-slate-400 mt-20">Aucun message. Écrivez à l’administration.</div>';el.scrollTop=el.scrollHeight;}catch(e){console.error(e)}}
+async function sendOrgChat(e){e.preventDefault();const input=$('org-chat-input'),message=input.value.trim();if(!message)return;try{await api('/api/organizers/chat/messages',{method:'POST',body:JSON.stringify({message})});input.value='';await loadOrgChat();}catch(err){alert(err.message)}}
+window.loadOrgChat=loadOrgChat;window.sendOrgChat=sendOrgChat;
+
+async function loadScannerAgents(){try{const d=await api('/api/organizers/scanners');const el=$('org-scanners-list');if(!el)return;el.innerHTML=(d.scanners||[]).map(a=>`<div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div class="font-black text-slate-900">${esc(a.name||'Agent scanner')}</div><div class="font-mono text-sm text-[#F97316] mt-1">${esc(a.agent_number)}</div><div class="text-[10px] text-slate-400 mt-1">${a.active?'Actif':'Désactivé'}${a.last_login_at?' • Dernière connexion '+new Date(a.last_login_at).toLocaleString('fr-FR'):''}</div></div><div class="flex gap-2"><button onclick="toggleScannerAgent(${a.id})" class="px-3 py-2 rounded-lg text-xs font-bold ${a.active?'bg-amber-50 text-amber-700':'bg-emerald-50 text-emerald-700'}">${a.active?'Désactiver':'Activer'}</button><button onclick="deleteScannerAgent(${a.id})" class="px-3 py-2 rounded-lg bg-red-50 text-red-600 text-xs font-bold"><i class="fa-solid fa-trash"></i></button></div></div>`).join('')||'<div class="p-8 text-center text-sm text-slate-400">Aucun agent scanner.</div>';}catch(e){console.error(e);}}
+async function createScannerAgent(e){e.preventDefault();try{const d=await api('/api/organizers/scanners',{method:'POST',body:JSON.stringify({name:$('scanner-agent-name').value,number:$('scanner-agent-number').value,password:$('scanner-agent-password').value})});alert(d.message||'Scanner créé.');e.target.reset();loadScannerAgents();}catch(err){alert(err.message)}}
+async function toggleScannerAgent(id){try{await api(`/api/organizers/scanners/${id}/toggle`,{method:'POST'});loadScannerAgents();}catch(e){alert(e.message)}}
+async function deleteScannerAgent(id){if(!confirm('Supprimer définitivement cet accès scanner ?'))return;try{await api(`/api/organizers/scanners/${id}`,{method:'DELETE'});loadScannerAgents();}catch(e){alert(e.message)}}
+window.loadScannerAgents=loadScannerAgents;window.createScannerAgent=createScannerAgent;window.toggleScannerAgent=toggleScannerAgent;window.deleteScannerAgent=deleteScannerAgent;
+
+
+
+async function loadPublicAds(){const section=$('public-ads'),box=$('public-ads-scroll');if(!section||!box)return;try{const d=await api('/api/ads');const ads=d.ads||[];if(!ads.length){section.classList.add('hidden');box.innerHTML='';return;}section.classList.remove('hidden');box.innerHTML=ads.map(a=>{const content=`<img src="${esc(a.image_url)}" alt="${esc(a.title||'Publicité Ticketora')}">`;return a.link_url?`<a class="public-ad-card" href="${esc(a.link_url)}" target="_blank" rel="noopener noreferrer">${content}</a>`:`<div class="public-ad-card">${content}</div>`}).join('');}catch(e){section.classList.add('hidden');console.warn('Publicités:',e);}}
+
+// ---------- V3 PUBLIC ----------
+function shareEvent(id,encodedUrl){const url=decodeURIComponent(encodedUrl),title='Découvrez cet événement sur Ticketora';const old=document.getElementById('share-pop');if(old)old.remove();const d=document.createElement('div');d.id='share-pop';d.className='fixed inset-0 z-[95] bg-black/60 flex items-center justify-center p-4';d.innerHTML=`<div class="bg-white rounded-3xl p-6 w-full max-w-sm"><div class="flex justify-between items-center"><h3 class="text-xl font-black text-[#071a3b]">Partager l’événement</h3><button onclick="this.closest('#share-pop').remove()" class="text-slate-400 text-xl">×</button></div><div class="grid grid-cols-2 gap-3 mt-5"><a target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(title+' : '+url)}" class="bg-emerald-500 text-white p-3 rounded-xl font-bold text-center">WhatsApp</a><a target="_blank" rel="noopener" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}" class="bg-blue-600 text-white p-3 rounded-xl font-bold text-center">Facebook</a><button onclick="navigator.clipboard?.writeText('${url}');alert('Lien copié');this.closest('#share-pop').remove()" class="bg-slate-900 text-white p-3 rounded-xl font-bold">Copier le lien</button><button onclick="navigator.clipboard?.writeText('${url}');alert('Lien copié. Ouvrez Instagram pour le partager.');this.closest('#share-pop').remove()" class="bg-gradient-to-r from-pink-500 to-orange-500 text-white p-3 rounded-xl font-bold">Instagram</button></div></div>`;document.body.appendChild(d);}
+function copyEventLink(){const url=location.href;navigator.clipboard?.writeText(url).then(()=>alert('Lien copié.')).catch(()=>prompt('Copiez le lien :',url));}
+async function loadPartners(){const box=document.getElementById('partners-track');if(!box)return;try{const d=await api('/api/events/partners');const partners=d.partners||[];const list=partners;box.innerHTML=list.length?[...list,...list].map(p=>p.logo_url?`<div class="partner-logo"><img src="${esc(p.logo_url)}" alt="${esc(p.name)}"></div>`:`<div class="partner-logo partner-text">${esc(p.name)}</div>`).join(''):'<div class="partner-logo partner-text">Nos partenaires arrivent bientôt</div>';}catch(e){console.warn(e);}}
+function initV3Animations(){const obs=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('is-visible')}),{threshold:.08});document.querySelectorAll('.reveal').forEach(x=>obs.observe(x));}
+async function participantAuth(mode){const email=document.getElementById('participant-email')?.value.trim(),password=document.getElementById('participant-password')?.value||'',name=document.getElementById('participant-name')?.value.trim();try{const d=await api(mode==='register'?'/api/participants/register':'/api/participants/login',{method:'POST',body:JSON.stringify(mode==='register'?{name,email,password}:{email,password})});if(d.success){closeParticipantModal();showParticipantHistory();}}catch(e){alert(e.message)}}
+async function showParticipantHistory(){try{const d=await api('/api/participants/history');const t=(d.tickets||[]).map(x=>`<div class="bg-white border rounded-2xl p-4"><div class="flex justify-between gap-3"><b>${esc(x.event_title)}</b><span class="text-xs font-bold ${x.used?'text-slate-400':'text-emerald-600'}">${x.used?'VALIDÉ':'VALIDE'}</span></div><p class="text-sm text-slate-500 mt-1">${esc(x.ticket_type)} · ${esc(x.code)}</p><button onclick="window.open(API+'/api/tickets/'+encodeURIComponent('${x.code}')+'/qr','_blank')" class="mt-3 text-xs font-bold text-[#F97316]">QR Code</button></div>`).join('');let box=document.getElementById('participant-history-box');if(!box){box=document.createElement('div');box.id='participant-history-box';box.className='fixed inset-0 z-[90] bg-black/70 backdrop-blur-sm p-4 overflow-auto';document.body.appendChild(box);}box.innerHTML=`<div class="max-w-2xl mx-auto mt-10 bg-slate-50 rounded-3xl p-6"><div class="flex justify-between items-center"><h2 class="text-2xl font-black text-[#071a3b]">Mon historique</h2><button onclick="this.closest('#participant-history-box').remove()" class="text-slate-400 text-xl">×</button></div><div class="space-y-3 mt-5">${t||'<p class="text-slate-500">Aucun billet associé à ce compte.</p>'}</div></div>`;}catch(e){alert(e.message)}}
+function downloadCSV(path){window.open(API+path,'_blank');}
+document.addEventListener('DOMContentLoaded',()=>{loadPartners();loadPublicAds();initV3Animations();setInterval(()=>{loadPartners();loadPublicAds();},60000);});
+
+function toggleFreeEventMode(){const free=$('event-type')?.value==='FREE';$('free-event-note')?.classList.toggle('hidden',!free);$('ticket-categories-container')?.closest('div.space-y-4')?.classList.toggle('opacity-60',free);if(free&&!document.querySelector('#ticket-categories-container > div'))addTicketCategoryRow({name:'Entrée gratuite',price:0,total_stock:0});}
+
+
+async function initTicketGenerator(){
+ try{const d=await api('/api/organizers/ticket-generator/status');if(d.authenticated){showTicketGeneratorForm();return;}}catch(e){}
+ $('org-generator-auth')?.classList.remove('hidden');$('org-generator-form-box')?.classList.add('hidden');$('generator-password').value='';
+}
+async function authenticateTicketGenerator(e){e.preventDefault();try{const d=await api('/api/organizers/ticket-generator/auth',{method:'POST',body:JSON.stringify({password:$('generator-password').value})});showTicketGeneratorForm();}catch(err){const m=$('generator-auth-message');m.textContent=err.message;m.className='text-xs p-3 rounded-xl font-semibold bg-rose-50 text-rose-600';}}
+async function showTicketGeneratorForm(){$('org-generator-auth')?.classList.add('hidden');$('org-generator-form-box')?.classList.remove('hidden');if(!(window.orgEventsCache||[]).length){try{const d=await api('/api/organizers/events');window.orgEventsCache=d.events||[];}catch(e){}}populateGeneratorEvents();}
+function populateGeneratorEvents(){const sel=$('generator-event');const events=window.orgEventsCache||[];sel.innerHTML=events.map(e=>`<option value="${e.id}">${esc(e.title)} — ${esc(e.date||'')}</option>`).join('')||'<option value="">Aucun événement</option>';populateGeneratorTicketTypes();}
+function populateGeneratorTicketTypes(){const e=(window.orgEventsCache||[]).find(x=>String(x.id)===String($('generator-event')?.value));const cats=Array.isArray(e?.ticket_categories)?e.ticket_categories:[];const sel=$('generator-ticket-type');sel.innerHTML=cats.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('')||(e?.event_type==='FREE'?'<option value="Entrée gratuite">Entrée gratuite</option>':'<option value="">Aucun type configuré</option>');}
+async function generateOrganizerTicket(e){e.preventDefault();try{const d=await api('/api/organizers/tickets/generate',{method:'POST',body:JSON.stringify({eventId:Number($('generator-event').value),ticketType:$('generator-ticket-type').value,name:$('generator-name').value,phone:$('generator-phone').value,email:$('generator-email').value})});const t=d.ticket;const msg=$('generator-message');msg.textContent=`Billet ${t.ticket_number||t.code} généré avec succès.`;msg.className='text-sm p-3 rounded-xl font-semibold bg-emerald-50 text-emerald-700';$('generator-last-ticket').classList.remove('hidden');$('generator-last-ticket').innerHTML=`<div class="flex flex-col md:flex-row md:items-center justify-between gap-4"><div><p class="text-xs uppercase font-black text-slate-400">Billet généré</p><h3 class="text-xl font-black text-[#071a3b]">${esc(t.ticket_number||t.code)}</h3><p class="text-sm text-slate-600 mt-1">${esc(t.customer_name)} · ${esc(t.ticket_type)}</p><p class="text-xs text-slate-400 mt-1">QR : ${esc(t.code)}</p></div><button onclick="downloadGeneratedTicket('${esc(t.code)}')" class="bg-slate-900 text-white font-bold px-5 py-3 rounded-xl">Télécharger le billet</button></div>`;await downloadGeneratedTicket(t.code);e.target.reset();populateGeneratorEvents();}catch(err){const m=$('generator-message');m.textContent=err.message;m.className='text-sm p-3 rounded-xl font-semibold bg-rose-50 text-rose-600';}}
+async function downloadGeneratedTicket(code){try{const r=await fetch(`${API}/api/tickets/${encodeURIComponent(code)}/image?download=1`,{credentials:'include'});if(!r.ok)throw new Error('Téléchargement impossible.');const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`Ticketora_${code}.png`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}catch(e){window.open(`${API}/api/tickets/${encodeURIComponent(code)}/image`,'_blank');}}
+window.initTicketGenerator=initTicketGenerator;window.authenticateTicketGenerator=authenticateTicketGenerator;window.populateGeneratorTicketTypes=populateGeneratorTicketTypes;window.generateOrganizerTicket=generateOrganizerTicket;window.downloadGeneratedTicket=downloadGeneratedTicket;
+
+async function populateOrgReportEvents(){try{const d=await api('/api/organizers/events');window.orgEventsCache=d.events||[];const opts=(d.events||[]).map(e=>`<option value="${e.id}">${esc(e.title)}</option>`).join('');['org-participant-event','org-report-event','org-tickets-event'].forEach(id=>{const x=$(id);if(x)x.innerHTML=opts||'<option value="">Aucun événement</option>';});}catch(e){}}
+async function loadOrgParticipants(){const id=Number($('org-participant-event')?.value);if(!id)return;try{const d=await api(`/api/organizers/events/${id}/participants`);window.orgParticipantsCache=d.participants||[];renderOrgParticipants(window.orgParticipantsCache);}catch(e){alert(e.message)}}
+function renderOrgParticipants(rows){const list=$('org-participants-list');if(!list)return;list.innerHTML=rows.map(x=>`<tr class="border-b"><td class="p-4 font-bold">${esc(x.customer_name)}<div class="text-xs text-slate-400">${esc(x.customer_email)}</div></td><td class="p-4 font-mono text-xs">${esc(x.ticket_id)}</td><td class="p-4">${esc(x.ticket_type)}</td><td class="p-4 font-bold ${x.used?'text-slate-400':'text-emerald-600'}">${x.used?'VALIDÉ':'NON VALIDÉ'}</td><td class="p-4 text-xs text-slate-500">${x.used_at?new Date(x.used_at).toLocaleString('fr-FR'):'—'}</td></tr>`).join('')||'<tr><td colspan="5" class="p-6 text-center text-slate-400">Aucun participant.</td></tr>';}
+function filterOrgParticipants(){const q=($('org-participant-search')?.value||'').toLowerCase();renderOrgParticipants((window.orgParticipantsCache||[]).filter(x=>`${x.customer_name} ${x.customer_email} ${x.ticket_id}`.toLowerCase().includes(q)));}
+async function generateOrgReport(){const id=Number($('org-report-event')?.value);if(!id)return;try{const d=await api(`/api/organizers/events/${id}/report`),r=d.report||{};$('org-report-box').innerHTML=[['Billets vendus en ligne',r.tickets_sold||0],['Billets générés',r.organizer_generated||0],['Total billets',r.total_tickets||0],['Entrées validées',r.validated||0],['Participants absents',r.absent||0],['Taux de présence',(r.attendance_rate||0)+'%'],['Revenus en ligne',fmt(r.revenue||0)+' FCFA'],['Revenu organisateur',fmt(r.organizer_revenue||0)+' FCFA']].map(x=>`<div class="bg-white border rounded-2xl p-5 shadow-sm"><p class="text-xs text-slate-400 font-black uppercase">${x[0]}</p><p class="text-2xl font-black text-[#071a3b] mt-2">${x[1]}</p></div>`).join('');const cats=r.by_category||[],gen=r.generated_tickets||[];if($('org-report-extra'))$('org-report-extra').innerHTML=`<div class="mb-6"><h4 class="font-black text-slate-800 mb-3">Répartition par type</h4>${cats.length?cats.map(x=>`<div class="grid grid-cols-4 gap-2 py-2 border-b text-sm"><span class="font-semibold">${esc(x.ticket_type||'Standard')}</span><span>${Number(x.online_tickets||0)} en ligne</span><span>${Number(x.generated_tickets||0)} générés</span><span>${Number(x.total_tickets||0)} total</span></div>`).join(''):'Aucune donnée.'}</div><div><h4 class="font-black text-slate-800 mb-3">🎟️ Billets générés par l’organisateur (${gen.length})</h4>${gen.length?`<div class="overflow-auto"><table class="w-full text-left text-xs"><thead class="bg-slate-50"><tr><th class="p-3">N° billet</th><th class="p-3">Participant</th><th class="p-3">Type</th><th class="p-3">Généré par</th><th class="p-3">Date</th><th class="p-3">Entrée</th></tr></thead><tbody>${gen.map(x=>`<tr class="border-b"><td class="p-3 font-mono font-bold">${esc(x.ticket_number||x.code)}</td><td class="p-3 font-bold">${esc(x.customer_name)}</td><td class="p-3">${esc(x.ticket_type)}</td><td class="p-3">${esc(x.generated_by||'Organisateur')}</td><td class="p-3">${x.generated_at?new Date(x.generated_at).toLocaleString('fr-FR'):'—'}</td><td class="p-3">${x.used?(x.used_at?new Date(x.used_at).toLocaleString('fr-FR'):'VALIDÉ'):'NON VALIDÉ'}</td></tr>`).join('')}</tbody></table></div>`:'Aucun billet généré pour cet événement.'}</div>`;}catch(e){alert(e.message)}}
+async function downloadOrgReport(){
+ const id=Number($('org-report-event')?.value);
+ if(!id)return;
+ try{
+  const d=await api(`/api/organizers/events/${id}/report`);
+  const r=d.report||{},e=d.event||{};
+  if(!window.jspdf?.jsPDF){alert('Le module PDF n’est pas chargé.');return;}
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+  const logo=new Image();logo.crossOrigin='anonymous';
+  const W=210,M=16,CW=178;
+  const navy=[7,26,59],gray=[91,105,125],light=[245,247,250],border=[210,218,228],orange=[249,115,22];
+  const money=v=>Number(v||0).toLocaleString('fr-FR');
+  const safe=v=>String(v??'-');
+  const wrap=(v,w)=>doc.splitTextToSize(safe(v),w-5).slice(0,3);
+  const row=(cells,y,h,header=false)=>{
+   const widths=[48,86,44];let x=M;
+   cells.forEach((cell,i)=>{
+    doc.setFillColor(...(header?light:[255,255,255]));
+    doc.setDrawColor(...border);doc.setLineWidth(.25);doc.rect(x,y,widths[i],h,'FD');
+    doc.setTextColor(...(header?navy:gray));doc.setFontSize(header?7.5:7.2);doc.setFont(undefined,header?'bold':'normal');
+    doc.text(wrap(cell,widths[i]),x+2.5,y+4.8);
+    x+=widths[i];
+   });
+  };
+  const draw=()=>{
+   try{doc.addImage(logo,'PNG',M,9,16,16);}catch{}
+   doc.setTextColor(...navy);doc.setFont(undefined,'bold');doc.setFontSize(17);doc.text('TICKETORA',38,17);
+   doc.setFont(undefined,'normal');doc.setFontSize(7.5);doc.setTextColor(...gray);doc.text('Plateforme de billetterie et de gestion d’événements',38,23);
+   doc.setDrawColor(...orange);doc.setLineWidth(.8);doc.line(M,30,W-M,30);
+
+   doc.setTextColor(...navy);doc.setFont(undefined,'bold');doc.setFontSize(14);doc.text('RAPPORT OFFICIEL DE L’ÉVÉNEMENT',M,41);
+   doc.setFontSize(9.5);doc.text(safe(e.title||'Événement').slice(0,90),M,48);
+   doc.setFont(undefined,'normal');doc.setFontSize(7.5);doc.setTextColor(...gray);
+   doc.text(`Date : ${safe(e.date)}`,M,54);
+   doc.text(`Organisateur : ${safe(e.organizer_name||e.organizer||'-')}`,M,59);
+   doc.text(`Lieu : ${safe(e.venue_name||e.location||'-')}${e.city?' · '+e.city:''}`,M,64);
+
+   doc.setTextColor(...navy);doc.setFont(undefined,'bold');doc.setFontSize(10.5);doc.text('RÉSULTATS DE L’ÉVÉNEMENT',M,74);
+   let y=78;
+   row(['RUBRIQUE','INDICATEUR','RÉSULTAT'],y,8,true);y+=8;
+
+   const rows=[
+    ['BILLETTERIE','Billets vendus en ligne',r.tickets_sold||0],
+    ['BILLETTERIE','Billets générés par l’organisateur',r.organizer_generated||0],
+    ['BILLETTERIE','Total des billets',r.total_tickets||0],
+    ['PRÉSENCE','Entrées validées',r.validated||0],
+    ['PRÉSENCE','Absents',r.absent||0],
+    ['PRÉSENCE','Taux de présence',`${r.attendance_rate||0} %`],
+    ['FINANCE','Revenus bruts',`${money(r.revenue)} FCFA`],
+    ['FINANCE','Revenu organisateur',`${money(r.organizer_revenue)} FCFA`],
+    ['FINANCE','Commission Ticketora',`${money(r.commission)} FCFA`],
+    ['FINANCE','Panier moyen',`${money(r.average_ticket)} FCFA`]
+   ];
+   rows.forEach(x=>{row(x,y,7.5,false);y+=7.5;});
+
+   const cats=r.by_category||[];
+   if(y<164)y=164;
+   doc.setTextColor(...navy);doc.setFont(undefined,'bold');doc.setFontSize(10.5);doc.text('CATÉGORIES',M,y+4);y+=8;
+   row(['RUBRIQUE','INDICATEUR','RÉSULTAT'],y,8,true);y+=8;
+   if(cats.length){
+    cats.slice(0,5).forEach(c=>{row(['CATÉGORIE',safe(c.ticket_type||'Standard'),`${Number(c.total_tickets||0)} billet(s) · ${Number(c.validated||0)} validé(s)`],y,7.5,false);y+=7.5;});
+   }else{row(['CATÉGORIE','Aucune catégorie disponible','-'],y,7.5,false);y+=7.5;}
+
+   // Une seule table pour les résultats; les textes d'analyse restent sous la table.
+   y+=6;
+   const synthesis=`L’événement compte ${Number(r.total_tickets||0)} billet(s), dont ${Number(r.tickets_sold||0)} vendu(s) en ligne et ${Number(r.organizer_generated||0)} généré(s) par l’organisateur. ${Number(r.validated||0)} entrée(s) ont été validée(s), soit ${Number(r.attendance_rate||0)} % du total.`;
+   const finance=`Les revenus bruts enregistrés s’élèvent à ${money(r.revenue)} FCFA. Le revenu organisateur est de ${money(r.organizer_revenue)} FCFA et la commission Ticketora de ${money(r.commission)} FCFA. Le panier moyen est de ${money(r.average_ticket)} FCFA.`;
+   const categoryText=cats.length?cats.slice(0,5).map(c=>`${safe(c.ticket_type||'Standard')} : ${Number(c.total_tickets||0)} billet(s), ${Number(c.validated||0)} validé(s).`).join(' '):'Aucune donnée détaillée par catégorie disponible.';
+   const section=(title,body)=>{
+    doc.setTextColor(...navy);doc.setFont(undefined,'bold');doc.setFontSize(9.5);doc.text(title,M,y);y+=4.5;
+    doc.setTextColor(...gray);doc.setFont(undefined,'normal');doc.setFontSize(7.3);
+    const lines=doc.splitTextToSize(body,CW);doc.text(lines.slice(0,4),M,y);y+=Math.min(4,lines.length)*3.5+4;
+   };
+   section('SYNTHÈSE',synthesis);
+   section('ANALYSE FINANCIÈRE',finance);
+   section('LECTURE DES CATÉGORIES',categoryText);
+
+   const fy=287;doc.setDrawColor(...border);doc.setLineWidth(.25);doc.line(M,fy-5,W-M,fy-5);
+   doc.setTextColor(148,163,184);doc.setFontSize(6.8);doc.setFont(undefined,'normal');
+   doc.text(`Généré le ${new Date().toLocaleString('fr-FR')} · Ticketora`,M,fy);
+   doc.text('Document officiel',W-M,fy,{align:'right'});
+   doc.save(`Ticketora_Rapport_${safe(e.title||'evenement').replace(/[^a-z0-9]+/gi,'_').slice(0,40)}.pdf`);
+  };
+  logo.onload=draw;logo.onerror=draw;logo.src=location.origin+'/logo.png';
+ }catch(e){console.error(e);alert(e.message);}
+}
+
+window.loadPublicAds=loadPublicAds;
+window.downloadTicketImage=downloadTicketImage;
+window.openWhatsAppTicket=openWhatsAppTicket;
+window.openWhatsAppTicketData=openWhatsAppTicketData;
+
+// ---------- BILLETS CLIENT / ORGANISATEUR ----------
+function showMyTickets(){
+ const sec=$('client-verify');if(sec){sec.classList.remove('hidden');sec.scrollIntoView({behavior:'smooth',block:'start'});}
+}
+async function lookupMyTickets(e){
+ e?.preventDefault();const box=$('my-tickets-result');if(!box)return;
+ const name=$('my-ticket-name')?.value.trim(),email=$('my-ticket-email')?.value.trim(),phone=$('my-ticket-phone')?.value.trim();
+ box.innerHTML='<div class="p-5 rounded-2xl bg-slate-50 text-center text-slate-500">Vérification en cours…</div>';
+ try{const d=await api('/api/tickets/lookup',{method:'POST',body:JSON.stringify({name,email,phone})});
+  box.innerHTML=(d.orders||[]).map(o=>`<div class="border border-slate-200 rounded-2xl p-5 mb-4"><div class="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-4"><div><p class="text-xs font-bold text-slate-400 uppercase">Paiement confirmé</p><h3 class="text-lg font-black text-[#071a3b]">${esc(o.event_title||'Événement')}</h3><p class="text-xs text-slate-500">${esc(o.reference||'')}</p></div><span class="text-xs font-black text-emerald-600">✓ PAYÉ</span></div><div class="grid gap-3">${(o.tickets||[]).map(t=>ticketCardHTML(t)).join('')}</div></div>`).join('')||'<div class="p-5 rounded-2xl bg-amber-50 text-amber-700 font-semibold text-center">Aucun billet disponible pour ces informations.</div>';
+ }catch(err){box.innerHTML=`<div class="p-5 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-center font-semibold">${esc(err.message)}</div>`;}
+}
+function ticketCardHTML(t){return `<div class="bg-slate-50 border border-slate-200 rounded-2xl p-4"><div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><p class="font-black text-[#071a3b]">${esc(t.ticket_type||'Standard')}</p><p class="text-sm text-slate-600 mt-1">${esc(t.customer_name||'')} · ${esc(t.customer_email||'')}</p><p class="text-xs text-slate-400 mt-1">${esc(t.customer_phone||'')} · <span class="font-mono font-bold">${esc(t.code||'')}</span></p></div><div class="flex flex-wrap gap-2"><button onclick="downloadTicketJPEG('${esc(t.code)}')" class="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">🖼️ JPEG</button><button onclick="downloadTicketPDF('${esc(t.code)}')" class="px-3 py-2 rounded-xl bg-[#F97316] text-white text-xs font-bold">📄 PDF</button></div></div></div>`;}
+async function ticketImageBlob(code){const r=await fetch(`${API}/api/tickets/${encodeURIComponent(code)}/image?download=1`,{credentials:'include'});if(!r.ok)throw new Error('Billet introuvable.');return r.blob();}
+function blobToDataURL(blob){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob);});}
+function blobToJPEG(blob){return new Promise((resolve,reject)=>{const u=URL.createObjectURL(blob),img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;c.getContext('2d').drawImage(img,0,0);c.toBlob(b=>{URL.revokeObjectURL(u);b?resolve(b):reject(new Error('Conversion JPEG impossible.'));},'image/jpeg',0.92);};img.onerror=()=>{URL.revokeObjectURL(u);reject(new Error('Image billet invalide.'));};img.src=u;});}
+async function downloadTicketJPEG(code){try{const blob=await blobToJPEG(await ticketImageBlob(code));const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`Ticketora_${code}.jpg`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);}catch(e){alert(e.message);}}
+async function downloadTicketPDF(code){try{if(!window.jspdf?.jsPDF)throw new Error('Le module PDF n’est pas chargé.');const data=await blobToDataURL(await ticketImageBlob(code));const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});doc.addImage(data,'PNG',10,55,277,95.7);doc.save(`Ticketora_${code}.pdf`);}catch(e){alert(e.message);}}
+async function downloadTicketBundle(tickets,label='Ticketora_Billets'){
+ if(!tickets?.length)return alert('Aucun billet à télécharger.');if(!window.JSZip) return alert('Le module ZIP n’est pas chargé.');
+ try{const zip=new JSZip(),folder=zip.folder(label),pdf=window.jspdf?.jsPDF?new window.jspdf.jsPDF({orientation:'landscape',unit:'mm',format:'a4'}):null;
+  for(let i=0;i<tickets.length;i++){const t=tickets[i],blob=await ticketImageBlob(t.code),data=await blobToDataURL(blob);folder.file(`${t.code}.jpg`,await blobToJPEG(blob));if(pdf){if(i)pdf.addPage();pdf.addImage(data,'PNG',10,55,277,95.7);}}
+  if(pdf)folder.file(`${label}.pdf`,pdf.output('blob'));const out=await zip.generateAsync({type:'blob'}),url=URL.createObjectURL(out),a=document.createElement('a');a.href=url;a.download=`${label}.zip`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
+ }catch(e){alert('Téléchargement impossible : '+e.message);}
+}
+async function loadOrgTickets(){const id=Number($('org-tickets-event')?.value);const box=$('org-tickets-list');if(!id||!box)return;box.innerHTML='<div class="p-6 text-center text-slate-400">Chargement…</div>';try{const d=await api(`/api/organizers/events/${id}/tickets`);window.orgTicketsCache=d.tickets||[];renderOrgTickets(window.orgTicketsCache);const all=$('org-download-all');if(all)all.disabled=!window.orgTicketsCache.length;}catch(e){box.innerHTML=`<div class="p-6 text-center text-rose-500">${esc(e.message)}</div>`;}}
+function renderOrgTickets(rows){const box=$('org-tickets-list');if(!box)return;box.innerHTML=rows.length?`<div class="overflow-auto"><table class="w-full text-left text-sm"><thead class="bg-slate-50"><tr><th class="p-3">Participant</th><th class="p-3">Type</th><th class="p-3">N° billet</th><th class="p-3">Paiement</th><th class="p-3">Téléchargé</th><th class="p-3">Date</th><th class="p-3">Action</th></tr></thead><tbody>${rows.map(t=>`<tr class="border-t border-slate-100"><td class="p-3"><b>${esc(t.customer_name)}</b><div class="text-xs text-slate-500">${esc(t.customer_email)}${t.customer_phone?` · ${esc(t.customer_phone)}`:''}</div></td><td class="p-3 font-bold">${esc(t.ticket_type)}</td><td class="p-3 font-mono text-xs">${esc(t.ticket_number||t.code)}</td><td class="p-3 text-emerald-600 font-black">✓ PAYÉ</td><td class="p-3">${t.downloaded?`<span class="text-emerald-600 font-bold">✓ Oui</span><div class="text-[11px] text-slate-400">${t.download_count||0} fois${t.last_downloaded_by?` · ${esc(t.last_downloaded_by)}`:''}</div>`:'<span class="text-amber-600 font-bold">Non</span>'}</td><td class="p-3 text-xs text-slate-500">${t.last_downloaded_at?new Date(t.last_downloaded_at).toLocaleString('fr-FR'):'—'}</td><td class="p-3"><div class="flex flex-wrap gap-2"><button onclick="downloadTicketJPEG('${esc(t.code)}')" class="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">🖼️ JPEG</button><button onclick="downloadTicketPDF('${esc(t.code)}')" class="px-3 py-2 rounded-xl bg-[#F97316] text-white text-xs font-bold">📄 PDF</button></div></td></tr>`).join('')}</tbody></table></div>`:'<div class="p-8 text-center text-slate-400">Aucun billet payé pour cet événement.</div>';}
+async function downloadAllOrgTickets(){try{const d=await api('/api/organizers/tickets');window.orgAllTicketsCache=d.tickets||[];await downloadTicketBundle(window.orgAllTicketsCache,'Ticketora_Billets_Organisateur');}catch(e){alert(e.message)}}
+function populateOrgTicketsEvents(){const sel=$('org-tickets-event');if(!sel)return;const events=window.orgEventsCache||[];sel.innerHTML=events.map(e=>`<option value="${e.id}">${esc(e.title)}</option>`).join('')||'<option value="">Aucun événement</option>';if(events.length)loadOrgTickets();}
+window.showMyTickets=showMyTickets;window.lookupMyTickets=lookupMyTickets;window.downloadTicketJPEG=downloadTicketJPEG;window.downloadTicketPDF=downloadTicketPDF;window.downloadAllOrgTickets=downloadAllOrgTickets;window.loadOrgTickets=loadOrgTickets;
+
+
+// ============================================================
+// GLISSER POUR PAYER — ne remplace pas la confirmation serveur
+// ============================================================
+(function(){
+  const initSlider=(el)=>{
+    if(!el||el.dataset.ready==='1')return;
+    const handle=el.querySelector('.pay-slider-handle');if(!handle)return;
+    el.dataset.ready='1';
+    el.style.touchAction='none';handle.style.touchAction='none';handle.style.left='3px';
+    let dragging=false,startX=0,startLeft=3,pointerId=null,done=false;
+    const getMax=()=>Math.max(3,el.clientWidth-handle.offsetWidth-6);
+    const finish=(cancel=false)=>{
+      if(!dragging&&!cancel)return;
+      const max=getMax(),left=parseFloat(handle.style.left||'3');
+      if(!cancel&&left>=max*0.75){
+        handle.style.left=max+'px';done=true;el.classList.add('completed');
+        const action=el.dataset.payAction;if(action&&typeof window[action]==='function')window[action]();
+      }else{handle.style.left='3px';}
+      el.classList.remove('dragging');dragging=false;pointerId=null;
+    };
+    const down=e=>{if(done)return;pointerId=e.pointerId??1;dragging=true;startX=e.clientX;startLeft=parseFloat(handle.style.left||'3');el.classList.add('dragging');try{el.setPointerCapture?.(pointerId)}catch{}e.preventDefault();e.stopPropagation();};
+    const move=e=>{if(!dragging||done)return;const max=getMax();handle.style.left=Math.max(3,Math.min(max,startLeft+(e.clientX-startX)))+'px';e.preventDefault();};
+    const up=e=>{if(!dragging)return;if(pointerId!==null&&e.pointerId!=null&&e.pointerId!==pointerId)return;e.preventDefault();finish(false);};
+    el.addEventListener('pointerdown',down);el.addEventListener('pointermove',move);el.addEventListener('pointerup',up);el.addEventListener('pointercancel',()=>finish(true));
+    el.addEventListener('lostpointercapture',()=>{if(dragging)finish(false);});
+    el.addEventListener('keydown',e=>{if(done)return;if(e.key==='ArrowRight'||e.key==='End'){e.preventDefault();handle.style.left=getMax()+'px';finish(false);}else if(e.key==='Home'){e.preventDefault();handle.style.left='3px';}});
+    el.setAttribute('tabindex','0');el.setAttribute('role','slider');el.setAttribute('aria-label','Glisser pour payer');
+  };
+  const scan=()=>document.querySelectorAll('.pay-slider').forEach(initSlider);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scan);else scan();
+  window.initPaymentSliders=scan;
+})();
+function resetPaySlider(id){const el=$(id);if(!el)return;el.classList.remove('completed');const h=el.querySelector('.pay-slider-handle');if(h)h.style.left='3px';}
+
+
+// ============================================================
+// CONCERT LIVE — public
+// ============================================================
+let liveViewerRoom=null;
+async function loadConcertLives(){
+  const grid=$('concert-live-grid');if(!grid)return;grid.innerHTML='<div class="col-span-full p-8 text-center text-slate-400">Chargement des directs…</div>';
+  try{const d=await api('/api/live');const lives=d.lives||[];if(!lives.length){grid.innerHTML='<div class="col-span-full p-8 text-center text-slate-400">Aucun Concert Live actuellement.</div>';return;}
+    grid.innerHTML=lives.map(l=>`<article class="live-card"><div class="h-44 bg-[#071a3b] relative overflow-hidden">${l.image_url?`<img src="${esc(l.image_url)}" class="w-full h-full object-cover">`:''}<span class="absolute top-3 left-3 bg-red-600 text-white text-[10px] font-black px-2 py-1 rounded-full">EN DIRECT</span></div><div class="p-4"><h3 class="font-black text-[#071a3b] text-lg">${esc(l.title)}</h3><p class="text-xs text-slate-500 mt-1">${esc(l.organizer_name||'Ticketora')} · ${esc(l.location||l.city||'')}</p><div class="flex items-center justify-between mt-4"><b class="text-[#F97316]">${fmt(l.live_price)} FCFA</b><button onclick="openLivePayment(${Number(l.id)})" class="bg-[#F97316] text-white font-black px-4 py-2 rounded-xl">Regarder</button></div></div></article>`).join('');
+  }catch(e){grid.innerHTML=`<div class="col-span-full p-8 text-center text-rose-500 font-bold">${esc(e.message)}</div>`;}
+}
+function showConcertLives(){showSection('concert-live-public');loadConcertLives();$('concert-live-public')?.scrollIntoView({behavior:'smooth',block:'start'});}
+function openLivePayment(id){
+  let modal=$('modal-live-payment');if(!modal){modal=document.createElement('div');modal.id='modal-live-payment';modal.className='fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[96]';modal.innerHTML='<div class="bg-white w-full max-w-md rounded-3xl p-7 relative"><button onclick="document.getElementById(\'modal-live-payment\')?.remove()" class="absolute top-4 right-4 text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button><h3 class="text-2xl font-black text-[#071a3b]">Accéder au Concert Live</h3><p class="text-sm text-slate-500 mt-2">Le paiement est requis avant l’accès vidéo.</p><div class="space-y-3 mt-5"><input id="live-pay-name" class="w-full border rounded-xl px-4 py-3 text-slate-900" placeholder="Votre nom"><input id="live-pay-email" type="email" class="w-full border rounded-xl px-4 py-3 text-slate-900" placeholder="Votre email"><div id="live-pay-slider" class="pay-slider pay-slider-orange" data-pay-action="startLivePayment"><span class="pay-slider-track">Glisser pour payer</span><span class="pay-slider-handle"><i class="fa-solid fa-arrow-right"></i></span></div><div id="live-pay-msg" class="hidden text-xs p-3 rounded-xl font-semibold"></div></div></div>';document.body.appendChild(modal);}
+  modal.dataset.liveId=String(id);window.initPaymentSliders?.();
+}
+async function startLivePayment(){const modal=$('modal-live-payment');if(!modal)return;const id=Number(modal.dataset.liveId),name=$('live-pay-name')?.value.trim(),email=$('live-pay-email')?.value.trim();if(!name||!email){alert('Veuillez remplir votre nom et votre email avant de glisser.');const sl=$('live-pay-slider');sl?.classList.remove('completed');if(sl?.querySelector('.pay-slider-handle'))sl.querySelector('.pay-slider-handle').style.left='3px';return;}const msg=$('live-pay-msg');if(msg){msg.textContent='Paiement en cours…';msg.className='text-xs p-3 rounded-xl font-semibold bg-blue-50 text-blue-700';msg.classList.remove('hidden');}try{const d=await api(`/api/live/${id}/payment`,{method:'POST',body:JSON.stringify({name,email})});sessionStorage.setItem('ticketora_pending_live',JSON.stringify({liveId:id,reference:d.reference,token:d.token}));if(d.payment_url)location.href=d.payment_url;else throw new Error('Lien de paiement indisponible.');}catch(e){if(msg){msg.textContent=e.message;msg.className='text-xs p-3 rounded-xl font-semibold bg-rose-50 text-rose-600';}const sl=$('live-pay-slider');sl?.classList.remove('completed');if(sl?.querySelector('.pay-slider-handle'))sl.querySelector('.pay-slider-handle').style.left='3px';}}
+async function setupLivePaymentReturn(){const q=new URLSearchParams(location.search);if(q.get('live')!=='return')return;const reference=q.get('reference'),liveId=Number(q.get('liveId'));if(!reference||!liveId)return;showConcertLives();const box=$('live-watch-box');if(box)box.innerHTML='<div class="p-10 text-center text-white"><div class="text-2xl font-black">Confirmation du paiement</div><p class="text-slate-300 mt-2">Ticketora vérifie la confirmation réelle de votre paiement.</p></div>';$('modal-live-watch')?.classList.remove('hidden');let tries=0;const check=async()=>{tries++;try{const p=JSON.parse(sessionStorage.getItem('ticketora_pending_live')||'{}');const token=p.token;const endpoint=token?`/api/live/payment/${encodeURIComponent(token)}/status`:`/api/live/payment/${encodeURIComponent(reference)}/status`;const d=await api(endpoint);if(d.paid){sessionStorage.removeItem('ticketora_pending_live');playPaymentTransition(box,'Paiement réussi','Votre accès au Concert Live est confirmé.',()=>watchLive(liveId),true);return;}if(['CANCELLED','FAILED'].includes(String(d.status))||tries>=60){clearInterval(timer);box.innerHTML='<div class="p-10 text-center"><div class="text-rose-500 text-2xl font-black">Paiement échoué</div><p class="text-slate-300 mt-2">Aucun accès vidéo n’a été délivré.</p></div>';}}catch(e){if(tries>=60)clearInterval(timer);}};check();const timer=setInterval(check,4000);}
+async function watchLive(id){const box=$('live-watch-box');if(!box)return;box.innerHTML='<div class="p-8 text-center text-white">Connexion au direct…</div>';try{const d=await api(`/api/live/${id}/token`);if(!d.allowed&&d.message)throw new Error(d.message);if(!window.LivekitClient)throw new Error('Le module vidéo LiveKit est indisponible.');const room=new LivekitClient.Room({adaptiveStream:true,dynacast:true});liveViewerRoom=room;box.innerHTML=`<div><div class="flex items-center justify-between mb-3"><div><h3 class="text-xl font-black">${esc(d.live?.title||'Concert Live')}</h3><p class="text-xs text-slate-400">EN DIRECT</p></div><button onclick="closeLiveWatch()" class="px-3 py-2 rounded-xl bg-white/10 font-bold">Fermer</button></div><div id="live-video-root" class="live-video"></div></div>`;room.on(LivekitClient.RoomEvent.TrackSubscribed,(track)=>{const el=track.attach();document.getElementById('live-video-root')?.appendChild(el);});room.on(LivekitClient.RoomEvent.TrackUnsubscribed,(track)=>track.detach().forEach(x=>x.remove()));await room.connect(d.url,d.token);for(const pub of room.remoteParticipants.values())for(const p of pub.trackPublications.values())if(p.track){const el=p.track.attach();document.getElementById('live-video-root')?.appendChild(el);}}catch(e){box.innerHTML=`<div class="p-10 text-center text-rose-400 font-bold">${esc(e.message)}</div>`;}}
+function closeLiveWatch(){try{liveViewerRoom?.disconnect();}catch{}liveViewerRoom=null;$('modal-live-watch')?.classList.add('hidden');}
+
+// ============================================================
+// ORGANISATEUR — CONCERT LIVE
+// ============================================================
+let orgLivePreviewStream=null,orgLivePublisherRoom=null;
+async function startOrgLivePreview(){try{orgLivePreviewStream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});const v=$('org-live-preview');if(v){v.srcObject=orgLivePreviewStream;await v.play().catch(()=>{});}}catch(e){alert('Impossible d’accéder à la caméra/micro : '+e.message);}}
+function stopOrgLivePreview(){orgLivePreviewStream?.getTracks().forEach(t=>t.stop());orgLivePreviewStream=null;const v=$('org-live-preview');if(v)v.srcObject=null;}
+async function loadOrgLive(){try{const d=await api('/api/organizers/live');if($('org-live-price'))$('org-live-price').innerText=fmt(d.price)+' FCFA';const evs=window.orgEventsCache||[];const sel=$('org-live-event');if(sel){sel.innerHTML=evs.filter(e=>e.status==='PUBLIE').map(e=>`<option value="${e.id}">${esc(e.title)} — ${esc(e.date)}</option>`).join('')||'<option value="">Aucun événement publié</option>';}renderOrgLiveList(d.lives||[]);}catch(e){console.error(e)}}
+function renderOrgLiveList(rows){const el=$('org-live-list');if(!el)return;el.innerHTML=rows.length?rows.map(l=>`<div class="border rounded-2xl p-4"><div class="flex items-center justify-between gap-3"><div><b class="text-slate-900">${esc(l.title)}</b><div class="text-xs text-slate-500 mt-1">${l.status==='LIVE'?'EN DIRECT':l.status==='READY'?'PRÊT':'TERMINÉ'} · ${fmt(l.viewers||0)} accès payés</div></div><div class="flex gap-2">${l.status==='READY'?`<button onclick="launchOrgLive(${l.id})" class="bg-[#F97316] text-white px-4 py-2 rounded-xl text-xs font-black">Lancer 10→0</button>`:''}${l.status==='LIVE'?`<button onclick="stopOrgLive(${l.id})" class="bg-red-600 text-white px-4 py-2 rounded-xl text-xs font-black">Arrêter</button>`:''}</div></div></div>`).join(''):'<div class="text-sm text-slate-400 p-6 text-center">Aucun direct préparé.</div>';}
+async function createOrgLive(){const id=Number($('org-live-event')?.value);if(!id)return alert('Sélectionnez un événement.');try{await api('/api/organizers/live',{method:'POST',body:JSON.stringify({eventId:id})});await loadOrgLive();alert('Concert Live préparé. Cliquez sur Lancer 10→0 pour démarrer.');}catch(e){alert(e.message)}}
+async function launchOrgLive(id){let n=10;const msg=$('org-live-message');if(msg){msg.className='text-2xl p-5 rounded-2xl font-black bg-slate-900 text-white text-center';msg.classList.remove('hidden');}if(!orgLivePublisherRoom){try{const d=await api(`/api/organizers/live/${id}/token`);const room=new LivekitClient.Room({adaptiveStream:true,dynacast:true});orgLivePublisherRoom=room;await room.connect(d.url,d.token);if(orgLivePreviewStream){for(const track of orgLivePreviewStream.getTracks()){await room.localParticipant.publishTrack(track);}}}catch(e){orgLivePublisherRoom=null;if(msg)msg.classList.add('hidden');return alert(e.message)}}const timer=setInterval(()=>{if(msg)msg.textContent=n>0?String(n):'EN DIRECT';if(n<=0){clearInterval(timer);api(`/api/organizers/live/${id}/start`,{method:'POST'}).then(()=>loadOrgLive()).catch(e=>alert(e.message));}n--;},1000);}
+async function stopOrgLive(id){try{await api(`/api/organizers/live/${id}/stop`,{method:'POST'});try{await orgLivePublisherRoom?.disconnect();}catch{}orgLivePublisherRoom=null;await loadOrgLive();}catch(e){alert(e.message)}}
+
+// ============================================================
+// ORGANISATEUR — MEETING
+// ============================================================
+async function loadOrgMeetings(){const el=$('org-meeting-list');if(!el)return;try{const d=await api('/api/organizers/meetings');el.innerHTML=(d.meetings||[]).map(m=>`<div class="border rounded-2xl p-4"><b class="text-slate-900">${esc(m.title)}</b><div class="flex flex-col sm:flex-row gap-2 mt-3"><input readonly value="${esc(m.share_url)}" class="flex-1 border rounded-xl px-3 py-2 text-xs text-slate-700"><button onclick='navigator.clipboard.writeText(${JSON.stringify(m.share_url)});alert("Lien copié")' class="bg-[#F97316] text-white px-4 py-2 rounded-xl text-xs font-black">Partager</button><a href="${esc(m.share_url)}" target="_blank" class="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-black text-center">Ouvrir</a>${m.status==='OPEN'?`<button onclick="closeOrgMeeting(${m.id})" class="border border-red-200 text-red-600 px-4 py-2 rounded-xl text-xs font-black">Fermer</button>`:''}</div></div>`).join('')||'<div class="text-sm text-slate-400 p-6 text-center">Aucun meeting.</div>';}catch(e){el.innerHTML=`<div class="text-rose-500 p-4">${esc(e.message)}</div>`;}}
+async function createOrgMeeting(ev){ev.preventDefault();const title=$('org-meeting-title')?.value.trim();if(!title)return;try{const d=await api('/api/organizers/meetings',{method:'POST',body:JSON.stringify({title})});$('org-meeting-title').value='';await loadOrgMeetings();if(d.meeting?.share_url)alert('Meeting créé. Lien :\n\n'+d.meeting.share_url);}catch(e){const m=$('org-meeting-message');if(m){m.textContent=e.message;m.className='text-xs p-3 rounded-xl font-semibold bg-rose-50 text-rose-600 mt-4';m.classList.remove('hidden');}}}
+async function closeOrgMeeting(id){if(!confirm('Fermer ce meeting ?'))return;try{await api(`/api/organizers/meetings/${id}/close`,{method:'POST'});loadOrgMeetings();}catch(e){alert(e.message)}}
+
+
+// ============================================================
+// TICKETORA — MEETING DANS LA PAGE PRINCIPALE
+// Le lien partagé reste de la forme /?meeting=ID&key=...
+// ============================================================
+let ticketoraMeetingRoom=null;
+let ticketoraMeetingProcessor=null;
+
+function meetingModal(){
+  let m=document.getElementById('ticketora-meeting-modal');
+  if(m)return m;
+  m=document.createElement('div');
+  m.id='ticketora-meeting-modal';
+  m.className='fixed inset-0 z-[120] bg-slate-950 text-white flex items-center justify-center p-3 md:p-6';
+  m.innerHTML=`<div class="w-full h-full max-w-7xl flex flex-col bg-[#07152f] rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
+    <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10">
+      <div><div id="meeting-title" class="font-black text-lg">Meeting Ticketora</div><div id="meeting-subtitle" class="text-xs text-slate-400">Connexion…</div></div>
+      <button id="meeting-close" class="px-4 py-2 rounded-xl bg-white/10 font-bold">Quitter</button>
+    </div>
+    <div class="flex-1 min-h-0 p-3 md:p-4 flex flex-col gap-3">
+      <div id="meeting-video-grid" class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 gap-3 overflow-auto"></div>
+      <div class="flex flex-wrap items-center justify-center gap-2 border-t border-white/10 pt-3">
+        <button id="meeting-camera" class="px-4 py-2 rounded-xl bg-white/10 font-bold">Caméra</button>
+        <button id="meeting-mic" class="px-4 py-2 rounded-xl bg-white/10 font-bold">Micro</button>
+        <button id="meeting-screen" class="px-4 py-2 rounded-xl bg-white/10 font-bold">Partager l’écran</button>
+        <label class="px-4 py-2 rounded-xl bg-white/10 font-bold cursor-pointer">Arrière-plan <input id="meeting-bg" type="file" accept="image/*" class="hidden"></label>
+      </div>
+      <div id="meeting-message" class="hidden text-center text-sm font-semibold"></div>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  m.querySelector('#meeting-close').onclick=closeTicketoraMeeting;
+  m.querySelector('#meeting-camera').onclick=async()=>{try{const enabled=!(ticketoraMeetingRoom?.localParticipant?.isCameraEnabled);await ticketoraMeetingRoom.localParticipant.setCameraEnabled(enabled);m.querySelector('#meeting-camera').textContent=enabled?'Caméra':'Caméra désactivée';}catch(e){meetingMsg(e.message,true)}};
+  m.querySelector('#meeting-mic').onclick=async()=>{try{const enabled=!(ticketoraMeetingRoom?.localParticipant?.isMicrophoneEnabled);await ticketoraMeetingRoom.localParticipant.setMicrophoneEnabled(enabled);m.querySelector('#meeting-mic').textContent=enabled?'Micro':'Micro désactivé';}catch(e){meetingMsg(e.message,true)}};
+  m.querySelector('#meeting-screen').onclick=async()=>{try{await ticketoraMeetingRoom.localParticipant.setScreenShareEnabled(true);m.querySelector('#meeting-screen').textContent='Écran partagé';}catch(e){meetingMsg(e.message,true)}};
+  m.querySelector('#meeting-bg').onchange=applyMeetingBackground;
+  return m;
+}
+function meetingMsg(t,error=false){const el=document.getElementById('meeting-message');if(!el)return;el.textContent=t;el.className='text-center text-sm font-semibold '+(error?'text-rose-300':'text-emerald-300');el.classList.remove('hidden');}
+function addMeetingTrack(track,participant){const root=document.getElementById('meeting-video-grid');if(!root)return;const id=`meeting-track-${track.sid}`;if(document.getElementById(id))return;const wrap=document.createElement('div');wrap.id=id;wrap.className='relative min-h-[220px] rounded-2xl overflow-hidden bg-black flex items-center justify-center';const label=document.createElement('span');label.className='absolute left-3 bottom-3 z-10 px-2 py-1 rounded-lg bg-black/60 text-xs font-bold';label.textContent=participant?.name||participant?.identity||'Participant';wrap.appendChild(label);const el=track.attach();el.style.width='100%';el.style.height='100%';el.style.objectFit='contain';wrap.appendChild(el);root.appendChild(wrap);}
+function removeMeetingTrack(track){document.getElementById(`meeting-track-${track.sid}`)?.remove();}
+async function applyMeetingBackground(ev){
+  const file=ev.target.files?.[0];
+  if(!file||!ticketoraMeetingRoom)return;
+  try{
+    if(!ticketoraMeetingProcessor){
+      const mod=await import('https://cdn.jsdelivr.net/npm/@livekit/track-processors@0.7.2/dist/index.mjs');
+      if(!mod.supportsBackgroundProcessors?.())throw new Error('Les arrière-plans virtuels ne sont pas pris en charge par ce navigateur.');
+      ticketoraMeetingProcessor=mod.BackgroundProcessor?new mod.BackgroundProcessor({mode:'disabled'}):null;
+    }
+    const pub=[...ticketoraMeetingRoom.localParticipant.videoTrackPublications.values()].find(x=>x.track);
+    if(!pub?.track||!ticketoraMeetingProcessor)throw new Error('Activez la caméra avant de choisir un arrière-plan.');
+    const imageUrl=URL.createObjectURL(file);
+    await ticketoraMeetingProcessor.switchTo({mode:'virtual-background',imagePath:imageUrl});
+    await pub.track.setProcessor(ticketoraMeetingProcessor);
+    meetingMsg('Arrière-plan appliqué.');
+  }catch(e){meetingMsg(e.message,true)}
+}
+async function openTicketoraMeetingFromUrl(){
+  const q=new URLSearchParams(location.search),id=Number(q.get('meeting')),key=q.get('key');
+  if(!id||!key)return;
+  const modal=meetingModal();modal.classList.remove('hidden');
+  try{
+    const d=await api(`/api/meetings/${id}/token?key=${encodeURIComponent(key)}`);
+    if(!window.LivekitClient)throw new Error('Le module vidéo LiveKit est indisponible.');
+    document.getElementById('meeting-title').textContent=d.meeting?.title||'Meeting Ticketora';
+    document.getElementById('meeting-subtitle').textContent=d.meeting?.isHost?'Organisateur':'Participant';
+    const room=new LivekitClient.Room({adaptiveStream:true,dynacast:true});ticketoraMeetingRoom=room;
+    room.on(LivekitClient.RoomEvent.TrackSubscribed,(track,publication,participant)=>addMeetingTrack(track,participant));
+    room.on(LivekitClient.RoomEvent.TrackUnsubscribed,(track)=>removeMeetingTrack(track));
+    room.on(LivekitClient.RoomEvent.ParticipantDisconnected,(p)=>{for(const pub of p.trackPublications.values())if(pub.track)removeMeetingTrack(pub.track);});
+    await room.connect(d.url,d.token);
+    await room.localParticipant.setCameraEnabled(true);
+    await room.localParticipant.setMicrophoneEnabled(true);
+    for(const p of room.remoteParticipants.values())for(const pub of p.trackPublications.values())if(pub.track)addMeetingTrack(pub.track,p);
+  }catch(e){meetingMsg(e.message,true)}
+}
+function closeTicketoraMeeting(){try{ticketoraMeetingRoom?.disconnect();}catch{}ticketoraMeetingRoom=null;ticketoraMeetingProcessor=null;document.getElementById('ticketora-meeting-modal')?.remove();const u=new URL(location.href);u.searchParams.delete('meeting');u.searchParams.delete('key');history.replaceState({},'',u.pathname+(u.search?'?'+u.searchParams.toString():'')+u.hash);}
+
+// Public live return hook
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',setupLivePaymentReturn);document.addEventListener('DOMContentLoaded',openTicketoraMeetingFromUrl);}else{setupLivePaymentReturn();openTicketoraMeetingFromUrl();}
