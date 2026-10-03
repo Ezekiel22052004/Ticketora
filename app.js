@@ -42,20 +42,6 @@ function showSection(sectionId){
   publicSections.forEach(id=>{const el=$(id);if(el)el.classList.toggle('hidden',id!==sectionId);});
   if(sectionId==='client-events'){$('client-events')?.scrollIntoView({behavior:'smooth',block:'start'});}
 }
-
-function publicBottomNav(target){
-  if(target==='home'){showSection('client-home');window.scrollTo({top:0,behavior:'smooth'});return;}
-  if(target==='events'){showSection('client-events');$('events-public')?.scrollIntoView({behavior:'smooth',block:'start'});return;}
-  if(target==='cagnottes'){$('cagnottes-public')?.scrollIntoView({behavior:'smooth',block:'start'});return;}
-  if(target==='live'){showConcertLives();return;}
-  if(target==='profile'){openParticipantLogin();return;}
-  if(target==='notifications'){
-    $('public-notifications-modal')?.remove();
-    const m=document.createElement('div');m.id='public-notifications-modal';m.className='fixed inset-0 z-[130] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4';
-    m.innerHTML='<div class="bg-white w-full max-w-md rounded-3xl p-7 shadow-2xl relative"><button onclick="this.closest(\'#public-notifications-modal\')?.remove()" class="absolute top-4 right-4 text-slate-400"><i class="fa-solid fa-xmark text-xl"></i></button><div class="w-12 h-12 rounded-2xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-bell"></i></div><h3 class="text-2xl font-black text-[#071a3b] mt-4">Notifications</h3><p class="text-sm text-slate-500 mt-2">Aucune nouvelle notification pour le moment.</p></div>';
-    document.body.appendChild(m);return;
-  }
-}
 async function fetchPublicEvents(){try{const d=await api('/api/events',{headers:eventApiHeaders()});cachedEvents=d.events||[];renderPublicEvents();renderTrendingEvents();populateEventFilters();const eventId=new URLSearchParams(location.search).get('event');if(eventId){const ev=cachedEvents.find(x=>String(x.id)===String(eventId));if(ev)openEventDetails(ev.id);} }catch(e){console.error(e);const g=$('all-events-grid');if(g)g.innerHTML='<p class="text-sm text-rose-500 font-bold">Impossible de charger les événements.</p>';}}
 function eventCard(e,compact=true){let cats=Array.isArray(e.ticket_categories)?e.ticket_categories:[];const price=cats.length?Math.min(...cats.map(c=>Number(c.price||0))):Number(e.price||0);const free=String(e.event_type||'PAID')==='FREE';const sold=!!e.sold_out;const liked=!!e.liked;return `<article class="event-card-public bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col shadow-sm relative group ${compact?'':''}" data-event-id="${Number(e.id)}" data-title="${esc(e.title)}" data-city="${esc(e.city||e.location||'')}" data-category="${esc(e.category||'')}" data-date="${esc(e.date||'')}" data-type="${free?'FREE':'PAID'}">${e.image_url?`<div class="relative overflow-hidden"><img src="${esc(e.image_url)}" alt="Affiche ${esc(e.title)}" class="w-full h-40 sm:h-48 object-cover event-poster">${sold?'<span class="absolute top-3 left-3 bg-red-600 text-white px-2 py-1 rounded-lg text-[9px] font-black tracking-wide shadow-lg">SOLD OUT</span>':''}</div>`:`<div class="relative w-full h-40 sm:h-48 bg-gradient-to-br from-[#071a3b] to-[#102d5e] flex items-center justify-center"><img src="logo.png" alt="Ticketora" class="w-16 h-16 object-contain opacity-80">${sold?'<span class="absolute top-3 left-3 bg-red-600 text-white px-2 py-1 rounded-lg text-[9px] font-black">SOLD OUT</span>':''}</div>`}<div class="p-3 sm:p-4 flex flex-col flex-1"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><h3 class="text-sm sm:text-base font-black text-[#071a3b] leading-tight line-clamp-2">${esc(e.title)}</h3>${e.organizer_verified?'<span class="inline-flex items-center gap-1 mt-1 text-[9px] font-black text-emerald-600"><i class="fa-solid fa-circle-check"></i> Organisateur vérifié</span>':''}<p class="text-[10px] sm:text-xs text-slate-500 font-semibold mt-1"><i class="fa-regular fa-calendar mr-1"></i>${esc(e.date||'')}</p><p class="text-[10px] sm:text-xs text-slate-500 font-semibold mt-1 truncate"><i class="fa-solid fa-location-dot text-[#F97316] mr-1"></i>${esc(e.city||e.location||'')}</p></div><button onclick="likeEvent(${Number(e.id)},event)" class="shrink-0 w-9 h-9 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:text-[#F97316] hover:border-orange-200 transition" title="J'aime"><i class="${liked?'fa-solid text-[#F97316]':'fa-regular'} fa-heart"></i></button></div><div class="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100"><div><p class="text-[9px] uppercase font-black text-slate-400">${free?'ENTRÉE':'À PARTIR DE'}</p><p class="text-sm sm:text-base font-black text-[#071a3b]">${free?'GRATUITE':fmt(price)+' FCFA'}</p></div><div class="flex items-center gap-1 text-[10px] font-bold text-slate-400"><i class="fa-solid fa-heart text-[#F97316]"></i><span class="like-count">${Number(e.like_count||0)}</span></div></div><div class="flex gap-2 mt-3">${!sold?`<button onclick="openBuyModal(${Number(e.id)})" class="flex-1 bg-[#F97316] hover:bg-orange-600 text-white font-bold px-3 py-2 rounded-xl text-[10px] sm:text-xs transition">${free?'Participer':'Acheter'}</button>`:''}<button onclick="openEventDetails(${Number(e.id)})" class="flex-1 border border-slate-200 rounded-xl text-slate-600 hover:text-[#F97316] font-bold px-2 py-2 text-[10px] sm:text-xs transition">Détails</button><button onclick="shareEvent(${Number(e.id)},'${encodeURIComponent(`${location.origin}${location.pathname}?event=${e.id}`)}')" class="w-10 h-9 border border-slate-200 rounded-xl text-slate-500 hover:text-[#F97316] transition" title="Partager"><i class="fa-solid fa-share-nodes"></i></button></div></div></article>`;}
 function renderPublicEvents(){const grid=$('all-events-grid'),upcoming=$('upcoming-events-grid'),empty=$('upcoming-events-empty');if(!grid&&!upcoming)return;const all=(cachedEvents||[]).map(e=>eventCard(e,true)).join('');if(grid){grid.innerHTML=all||'<p class="text-slate-500 text-sm font-semibold">Aucun événement publié.</p>';filterEvents();}if(upcoming){const upcomingEvents=(cachedEvents||[]).slice(0,3);upcoming.innerHTML=upcomingEvents.map(e=>eventCard(e,true)).join('');empty?.classList.toggle('hidden',upcomingEvents.length>0);}}
@@ -235,7 +221,6 @@ window.fetchPublicCagnottes=fetchPublicCagnottes;window.openCagnotteModal=openCa
 window.addEventListener('DOMContentLoaded',()=>{if($('client-home')){showSection('client-home');fetchPublicEvents();fetchPublicCagnottes();setupPaymentReturn();setupCagnotteReturn();}checkOrgSession();});
 
 window.showSection = showSection;
-window.publicBottomNav = publicBottomNav;
 
 window.filterEvents = filterEvents;
 
@@ -460,71 +445,28 @@ window.showMyTickets=showMyTickets;window.lookupMyTickets=lookupMyTickets;window
 // ============================================================
 (function(){
   const initSlider=(el)=>{
-    if(!el)return;
-    if(el.dataset.ready==='1')return;
-    const handle=el.querySelector('.pay-slider-handle');
-    if(!handle)return;
+    if(!el||el.dataset.ready==='1')return;
+    const handle=el.querySelector('.pay-slider-handle');if(!handle)return;
     el.dataset.ready='1';
-    el.style.touchAction='none';
-    handle.style.touchAction='none';
-    handle.style.left=handle.style.left||'3px';
+    el.style.touchAction='none';handle.style.touchAction='none';handle.style.left='3px';
     let dragging=false,startX=0,startLeft=3,pointerId=null,done=false;
     const getMax=()=>Math.max(3,el.clientWidth-handle.offsetWidth-6);
-    const finish=()=>{
-      if(done)return;
-      const max=getMax();
-      const left=parseFloat(handle.style.left||'3');
-      if(left>=max*0.88){
-        handle.style.left=max+'px';
-        done=true;
-        el.classList.add('completed');
-        const action=el.dataset.payAction;
-        if(action&&typeof window[action]==='function')window[action]();
-      }else{
-        handle.style.left='3px';
-      }
-      el.classList.remove('dragging');
-      dragging=false;
-      pointerId=null;
+    const finish=(cancel=false)=>{
+      if(!dragging&&!cancel)return;
+      const max=getMax(),left=parseFloat(handle.style.left||'3');
+      if(!cancel&&left>=max*0.75){
+        handle.style.left=max+'px';done=true;el.classList.add('completed');
+        const action=el.dataset.payAction;if(action&&typeof window[action]==='function')window[action]();
+      }else{handle.style.left='3px';}
+      el.classList.remove('dragging');dragging=false;pointerId=null;
     };
-    const move=(e)=>{
-      if(!dragging||done)return;
-      const max=getMax();
-      const next=Math.max(3,Math.min(max,startLeft+(e.clientX-startX)));
-      handle.style.left=next+'px';
-      e.preventDefault();
-    };
-    const down=(e)=>{
-      if(done)return;
-      pointerId=e.pointerId;
-      dragging=true;
-      startX=e.clientX;
-      startLeft=parseFloat(handle.style.left||'3');
-      el.classList.add('dragging');
-      try{el.setPointerCapture?.(e.pointerId)}catch{}
-      e.preventDefault();
-      e.stopPropagation();
-    };
-    const up=(e)=>{
-      if(!dragging)return;
-      if(pointerId!==null&&e.pointerId!==pointerId)return;
-      finish();
-      e.preventDefault();
-    };
-    // Le slider entier accepte le démarrage du glissement, pas seulement la flèche.
-    el.addEventListener('pointerdown',down);
-    el.addEventListener('pointermove',move);
-    el.addEventListener('pointerup',up);
-    el.addEventListener('pointercancel',up);
-    el.addEventListener('lostpointercapture',()=>{if(dragging)finish();});
-    el.addEventListener('keydown',e=>{
-      if(done)return;
-      if(e.key==='ArrowRight'||e.key==='End'){e.preventDefault();handle.style.left=getMax()+'px';finish();}
-      else if(e.key==='Home'){e.preventDefault();handle.style.left='3px';}
-    });
-    el.setAttribute('tabindex','0');
-    el.setAttribute('role','slider');
-    el.setAttribute('aria-label','Glisser pour payer');
+    const down=e=>{if(done)return;pointerId=e.pointerId??1;dragging=true;startX=e.clientX;startLeft=parseFloat(handle.style.left||'3');el.classList.add('dragging');try{el.setPointerCapture?.(pointerId)}catch{}e.preventDefault();e.stopPropagation();};
+    const move=e=>{if(!dragging||done)return;const max=getMax();handle.style.left=Math.max(3,Math.min(max,startLeft+(e.clientX-startX)))+'px';e.preventDefault();};
+    const up=e=>{if(!dragging)return;if(pointerId!==null&&e.pointerId!=null&&e.pointerId!==pointerId)return;e.preventDefault();finish(false);};
+    el.addEventListener('pointerdown',down);el.addEventListener('pointermove',move);el.addEventListener('pointerup',up);el.addEventListener('pointercancel',()=>finish(true));
+    el.addEventListener('lostpointercapture',()=>{if(dragging)finish(false);});
+    el.addEventListener('keydown',e=>{if(done)return;if(e.key==='ArrowRight'||e.key==='End'){e.preventDefault();handle.style.left=getMax()+'px';finish(false);}else if(e.key==='Home'){e.preventDefault();handle.style.left='3px';}});
+    el.setAttribute('tabindex','0');el.setAttribute('role','slider');el.setAttribute('aria-label','Glisser pour payer');
   };
   const scan=()=>document.querySelectorAll('.pay-slider').forEach(initSlider);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scan);else scan();
