@@ -435,58 +435,43 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
         </main>
     </div>
 
-    <!-- MODAL: CREATE EVENT -->
-    <div id="create-event-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
-        <div class="bg-white w-full max-w-2xl rounded-2xl p-6 shadow-2xl space-y-6">
+    <!-- MODAL: CREATE EVENT — formulaire aligné sur celui de l’organisateur -->
+    <div id="create-event-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden overflow-y-auto p-4">
+        <div class="bg-white w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl p-6 shadow-2xl space-y-6">
             <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 class="font-extrabold text-navy-900 text-lg">Créer un Nouvel Événement (Admin)</h3>
-                <button onclick="closeModal('create-event-modal')" class="text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-lg"></i></button>
+                <h3 class="font-extrabold text-navy-900 text-lg">Créer un nouvel événement</h3>
+                <button type="button" onclick="closeModal('create-event-modal')" class="text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
-            
-            <form onsubmit="handleCreateEvent(event)" class="space-y-4 text-sm">
-                <div>
-                    <label class="block font-bold text-slate-700 mb-1">Titre de l'événement</label>
-                    <input type="text" id="form-event-title" required placeholder="Ex: Concert Afrobeats 2026" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:outline-none">
-                </div>
-
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">Catégorie</label>
-                        <select id="form-event-category" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:outline-none">
-                            <option value="Concert">Concert</option>
-                            <option value="Festival">Festival</option>
-                            <option value="Sport">Sport</option>
-                            <option value="Théâtre">Théâtre</option>
-                            <option value="Formation">Formation</option>
-                        </select>
+            <form id="admin-event-form" onsubmit="handleCreateEvent(event)" class="space-y-4 text-sm">
+                <div class="space-y-4">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">1. Informations générales</h4>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div><label class="block font-bold text-slate-700 mb-1">Titre de l’événement *</label><input type="text" id="form-event-title" required placeholder="Ex. Concert Afrobeats 2026" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl"></div>
+                        <div><label class="block font-bold text-slate-700 mb-1">Catégorie</label><select id="form-event-category" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl"><option value="Concert">Concert</option><option value="Festival">Festival</option><option value="Sport">Sport</option><option value="Théâtre">Théâtre</option><option value="Formation">Formation</option><option value="VIP">VIP</option><option value="Autre">Autre</option></select></div>
                     </div>
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">Prix du Billet (FCFA)</label>
-                        <input type="number" id="form-event-price" required placeholder="5000" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:outline-none">
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div><label class="block font-bold text-slate-700 mb-1">Type d’événement *</label><select id="form-event-type" onchange="toggleAdminFreeEventMode()" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl"><option value="PAID">Événement payant</option><option value="FREE">Événement gratuit</option></select></div>
+                        <div><label class="block font-bold text-slate-700 mb-1">Date *</label><input type="date" id="form-event-date" required class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl"></div>
                     </div>
-                </div>
-
-                <div>
-                    <label class="block font-bold text-slate-700 mb-1">Affiche de l'événement</label>
-                    <input type="file" id="form-event-image" accept="image/png,image/jpeg,image/webp,image/gif" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm">
-                    <p class="text-[11px] text-slate-400 mt-1">PNG/JPG/WebP/GIF — maximum 1,5 Mo.</p>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">Date</label>
-                        <input type="date" id="form-event-date" required class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:outline-none">
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div><label class="block font-bold text-slate-700 mb-1">Lieu / résumé *</label><input type="text" id="form-event-location" required placeholder="Ex. Palais des Congrès" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl"></div>
+                        <div><label class="block font-bold text-slate-700 mb-1">Nom de la salle</label><input type="text" id="form-event-venue" placeholder="Nom du lieu / salle" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl"></div>
                     </div>
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">Capacité Max</label>
-                        <input type="number" id="form-event-capacity" required placeholder="500" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:outline-none">
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div><label class="block font-bold text-slate-700 mb-1">Ville *</label><input type="text" id="form-event-city" required placeholder="Ville" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl"></div>
+                        <div><label class="block font-bold text-slate-700 mb-1">Adresse / quartier</label><input type="text" id="form-event-address" placeholder="Adresse / quartier" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl"></div>
                     </div>
+                    <div class="grid md:grid-cols-2 gap-4"><input type="number" step="any" id="form-event-latitude" placeholder="Latitude GPS (facultatif)" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl"><input type="number" step="any" id="form-event-longitude" placeholder="Longitude GPS (facultatif)" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl"></div>
+                    <div><label class="block font-bold text-slate-700 mb-1">Description</label><textarea id="form-event-description" rows="3" placeholder="Description de l’événement..." class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl"></textarea></div>
+                    <div><label class="block font-bold text-slate-700 mb-1">Affiche de l’événement</label><input type="file" id="form-event-image" accept="image/png,image/jpeg,image/webp,image/gif" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl"><p class="text-[11px] text-slate-400 mt-1">PNG/JPG/WebP/GIF — maximum 1,5 Mo.</p></div>
                 </div>
-
-                <div class="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                    <button type="button" onclick="closeModal('create-event-modal')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs">Annuler</button>
-                    <button type="submit" class="px-5 py-2 bg-brand-orange hover:bg-brand-orangeDark text-white font-bold rounded-lg text-xs shadow-md shadow-brand-orange/20">Publier l'événement</button>
+                <div id="admin-free-event-note" class="hidden bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl p-4 text-sm font-semibold">Événement gratuit : aucun prix ni stock de billets à renseigner. Les informations de lieu, date et description restent nécessaires.</div>
+                <div id="admin-paid-ticket-section" class="space-y-3 border-t border-slate-100 pt-4">
+                    <div class="flex items-center justify-between gap-3"><h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">2. Catégories, prix et stocks</h4><button type="button" onclick="addAdminTicketCategoryRow()" class="text-xs bg-slate-900 text-white px-3 py-2 rounded-lg font-bold"><i class="fa-solid fa-plus"></i> Ajouter une catégorie</button></div>
+                    <div id="admin-ticket-categories" class="space-y-3"></div>
+                    <label class="block text-xs font-bold text-slate-600">Maximum de billets par commande</label><input id="form-event-max-order" type="number" min="1" max="50" value="10" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl">
                 </div>
+                <div class="flex justify-end gap-3 pt-4 border-t border-slate-100"><button type="button" onclick="closeModal('create-event-modal')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">Annuler</button><button type="submit" class="px-5 py-3 bg-brand-orange hover:bg-brand-orangeDark text-white font-bold rounded-xl text-xs shadow-md">Publier l’événement</button></div>
             </form>
         </div>
     </div>

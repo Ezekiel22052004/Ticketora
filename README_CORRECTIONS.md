@@ -48,3 +48,10 @@ npm start
 ```
 
 Le serveur charge `.env` depuis le même dossier que `server.js`. Les migrations idempotentes des tables de réservations et d’accès LIVE sont également lancées au démarrage. La table historique participant_users et ses colonnes de liaison sont conservées pour compatibilité de la base, mais aucun parcours public de compte participant n’est exposé.
+
+
+## Formulaire de création d’événement (organisateur et administrateur)
+- Les deux interfaces demandent les mêmes informations générales : titre, catégorie, type, date, lieu, ville, adresse, description et affiche, avec coordonnées GPS facultatives.
+- Pour un événement payant, au moins une catégorie avec prix et stock est requise.
+- Pour un événement gratuit, les champs prix et stock sont masqués et ne sont pas demandés ; le serveur enregistre automatiquement une catégorie gratuite à prix zéro et une capacité technique élevée pour ne pas bloquer la création.
+- Le design du reste du site, les paiements et les modèles de billets n’ont pas été intentionnellement modifiés.
