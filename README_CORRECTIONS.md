@@ -55,3 +55,9 @@ Le serveur charge `.env` depuis le même dossier que `server.js`. Les migrations
 - Pour un événement payant, au moins une catégorie avec prix et stock est requise.
 - Pour un événement gratuit, les champs prix et stock sont masqués et ne sont pas demandés ; le serveur enregistre automatiquement une catégorie gratuite à prix zéro et une capacité technique élevée pour ne pas bloquer la création.
 - Le design du reste du site, les paiements et les modèles de billets n’ont pas été intentionnellement modifiés.
+
+## Événements gratuits — interface publique
+- Les cartes d'événements gratuits ne proposent plus le bouton « Participer » : seuls « Détails » et « Partager » restent disponibles (ainsi que les contrôles visuels déjà présents comme le favori).
+- La fiche détaillée d'un événement gratuit n'affiche plus de bouton d'inscription/participation ni les prix et stocks techniques ; elle affiche simplement l'indication « Entrée gratuite » avec les informations de l'événement et le partage.
+- Pour les événements payants, le bouton d'achat et les informations tarifaires restent disponibles.
+- Le cache du service worker a été versionné afin de forcer le chargement de la nouvelle interface.
