@@ -3,7 +3,7 @@ let cachedEvents=[];let activeBuyingEvent=null;let activeBuyingCategory=null;let
 const $=id=>document.getElementById(id);
 async function api(path,options={}){const r=await fetch(`${API}${path}`,{credentials:'include',...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.message||'Erreur serveur');return d;}
 function ticketoraSlug(value){return String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,150)||'ticketora';}
-function eventShareUrl(e){const slug=String(e?.public_slug||ticketoraSlug(e?.title)||'ticketora').toLowerCase();return `https://${slug}.ticketora.site/`;}
+function eventShareUrl(e){const slug=String(e?.public_slug||ticketoraSlug(e?.title)||'ticketora').toLowerCase();const id=Number(e?.id)||0;return `https://ticketora.site/?event=${encodeURIComponent(id)}&slug=${encodeURIComponent(slug)}`;}
 function ticketoraEventSubdomainSlug(){const host=String(location.hostname||'').toLowerCase();if(!host.endsWith('.ticketora.site')||host==='www.ticketora.site')return '';const prefix=host.slice(0,-'.ticketora.site'.length);return prefix&&!prefix.includes('.')&&/^[a-z0-9-]+$/.test(prefix)?prefix:'';}
 
 // ---------- ACCÈS PUBLIC DU SITE ----------
