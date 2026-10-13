@@ -48,10 +48,6 @@ function publicBottomNav(target){
       document.getElementById('events-public')?.scrollIntoView({behavior:'smooth',block:'start'});
     }else if(target==='cagnottes'){
       document.getElementById('cagnottes-public')?.scrollIntoView({behavior:'smooth',block:'start'});
-    }else if(target==='notifications'){
-      openParticipantNotifications();
-    }else if(target==='profile'){
-      openParticipantLogin();
     }else if(target==='live'){
       showConcertLives();
     }
@@ -359,26 +355,6 @@ function shareEvent(id,encodedUrl){const url=decodeURIComponent(encodedUrl),titl
 function copyEventLink(){const url=location.href;navigator.clipboard?.writeText(url).then(()=>alert('Lien copié.')).catch(()=>prompt('Copiez le lien :',url));}
 async function loadPartners(){const box=document.getElementById('partners-track');if(!box)return;try{const d=await api('/api/events/partners');const partners=d.partners||[];const list=partners;box.innerHTML=list.length?[...list,...list].map(p=>p.logo_url?`<div class="partner-logo"><img src="${esc(p.logo_url)}" alt="${esc(p.name)}"></div>`:`<div class="partner-logo partner-text">${esc(p.name)}</div>`).join(''):'<div class="partner-logo partner-text">Nos partenaires arrivent bientôt</div>';}catch(e){console.warn(e);}}
 function initV3Animations(){const obs=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('is-visible')}),{threshold:.08});document.querySelectorAll('.reveal').forEach(x=>obs.observe(x));}
-async function participantAuth(mode){const email=document.getElementById('participant-email')?.value.trim(),password=document.getElementById('participant-password')?.value||'',name=document.getElementById('participant-name')?.value.trim();try{const d=await api(mode==='register'?'/api/participants/register':'/api/participants/login',{method:'POST',body:JSON.stringify(mode==='register'?{name,email,password}:{email,password})});if(d.success){closeParticipantModal();showParticipantHistory();}}catch(e){alert(e.message)}}
-async function showParticipantHistory(){
- try{
-  const d=await api('/api/participants/history');
-  const tickets=(d.tickets||[]).map(x=>`<div class="bg-white border rounded-2xl p-4"><div class="flex justify-between gap-3"><b>${esc(x.event_title)}</b><span class="text-xs font-bold ${x.used?'text-slate-400':'text-emerald-600'}">${x.used?'UTILISÉ':'PAYÉ'}</span></div><p class="text-sm text-slate-500 mt-1">${esc(x.ticket_type)} · ${esc(x.event_date||'')} · ${esc(x.event_location||'')}</p><p class="text-xs text-slate-500 mt-1">Participant : ${esc(x.customer_name||'')} · Code : ${esc(x.code)}</p><div class="flex flex-wrap gap-2 mt-3"><button onclick="window.open(API+'/api/tickets/'+encodeURIComponent('${esc(x.code)}')+'/qr','_blank')" class="text-xs font-bold text-[#F97316] border border-orange-200 rounded-lg px-3 py-2">Voir mon ticket / QR Code</button><button onclick="downloadTicketPDF('${esc(x.code)}')" class="text-xs font-bold text-white bg-[#F97316] rounded-lg px-3 py-2">Télécharger mon ticket</button></div></div>`).join('');
-  const box=document.getElementById('participant-history-box')||document.createElement('div');box.id='participant-history-box';box.className='fixed inset-0 z-[90] bg-black/70 backdrop-blur-sm p-4 overflow-auto';
-  box.innerHTML=`<div class="max-w-2xl mx-auto mt-10 bg-slate-50 rounded-3xl p-6"><div class="flex justify-between items-center"><h2 class="text-2xl font-black text-[#071a3b]">Mes tickets et mon compte</h2><button onclick="this.closest('#participant-history-box').remove()" class="text-slate-400 text-xl">×</button></div><div class="flex flex-wrap gap-2 mt-4"><button onclick="editParticipantProfile()" class="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">Modifier mon profil</button><button onclick="showParticipantNotifications()" class="px-3 py-2 rounded-xl bg-[#F97316] text-white text-xs font-bold">Notifications</button></div><div class="space-y-3 mt-5">${tickets||'<p class="text-slate-500">Aucun ticket payé associé à ce compte.</p>'}</div></div>`;
-  if(!box.isConnected)document.body.appendChild(box);
- }catch(e){alert(e.message)}
-}
-async function editParticipantProfile(){
- try{const d=await api('/api/participants/me');const name=prompt('Nom affiché',d.user?.name||'');if(name===null)return;const phone=prompt('Téléphone',d.user?.phone||'');if(phone===null)return;const u=await api('/api/participants/me',{method:'PATCH',body:JSON.stringify({name,phone})});alert('Profil mis à jour.');}catch(e){alert(e.message)}
-}
-async function showParticipantNotifications(){
- try{const d=await api('/api/participants/notifications');const ns=d.notifications||[];const box=document.getElementById('participant-notifications-box')||document.createElement('div');box.id='participant-notifications-box';box.className='fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm p-4 overflow-auto';box.innerHTML=`<div class="max-w-xl mx-auto mt-10 bg-white rounded-3xl p-6"><div class="flex justify-between items-center gap-3"><h2 class="text-xl font-black text-[#071a3b]">Notifications (${Number(d.unread_count||0)} non lues)</h2><button onclick="this.closest('#participant-notifications-box').remove()" class="text-slate-400 text-xl">×</button></div><div class="space-y-3 mt-5">${ns.map(n=>`<div class="border rounded-xl p-3 ${n.read_at?'bg-white':'bg-orange-50'}"><div class="flex justify-between gap-3"><b class="text-sm text-[#071a3b]">${esc(n.title)}</b>${n.read_at?'':'<button onclick="markParticipantNotificationRead('+Number(n.id)+')" class="text-xs text-[#F97316] font-bold">Marquer lu</button>'}</div><p class="text-sm text-slate-600 mt-1">${esc(n.message)}</p><p class="text-[11px] text-slate-400 mt-2">${n.created_at?new Date(n.created_at).toLocaleString('fr-FR'):''}</p></div>`).join('')||'<p class="text-sm text-slate-500">Aucune notification pour le moment.</p>'}</div><button onclick="markAllParticipantNotificationsRead().then(()=>showParticipantNotifications())" class="mt-4 px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">Tout marquer comme lu</button></div>`;if(!box.isConnected)document.body.appendChild(box);
- }catch(e){alert(e.message)}
-}
-async function markParticipantNotificationRead(id){try{await api(`/api/participants/notifications/${Number(id)}/read`,{method:'POST'});await showParticipantNotifications();}catch(e){alert(e.message)}}
-async function markAllParticipantNotificationsRead(){await api('/api/participants/notifications/read-all',{method:'POST'});}
-
 function downloadCSV(path){window.open(API+path,'_blank');}
 document.addEventListener('DOMContentLoaded',()=>{loadPartners();loadPublicAds();initV3Animations();setInterval(()=>{loadPartners();loadPublicAds();},60000);});
 
@@ -525,8 +501,6 @@ function renderOrgTickets(rows){const box=$('org-tickets-list');if(!box)return;b
 async function downloadAllOrgTickets(){try{const d=await api('/api/organizers/tickets');window.orgAllTicketsCache=d.tickets||[];await downloadTicketBundle(window.orgAllTicketsCache,'Ticketora_Billets_Organisateur');}catch(e){alert(e.message)}}
 function populateOrgTicketsEvents(){const sel=$('org-tickets-event');if(!sel)return;const events=window.orgEventsCache||[];sel.innerHTML=events.map(e=>`<option value="${e.id}">${esc(e.title)}</option>`).join('')||'<option value="">Aucun événement</option>';if(events.length)loadOrgTickets();}
 window.showMyTickets=showMyTickets;window.lookupMyTickets=lookupMyTickets;window.downloadTicketJPEG=downloadTicketJPEG;window.downloadTicketPDF=downloadTicketPDF;window.downloadAllOrgTickets=downloadAllOrgTickets;window.loadOrgTickets=loadOrgTickets;
-window.showParticipantHistory=showParticipantHistory;window.showParticipantNotifications=showParticipantNotifications;window.editParticipantProfile=editParticipantProfile;window.markParticipantNotificationRead=markParticipantNotificationRead;window.markAllParticipantNotificationsRead=markAllParticipantNotificationsRead;
-async function openParticipantNotifications(){try{await api('/api/participants/me');await showParticipantNotifications();}catch(e){openParticipantLogin();}}
 
 
 // ============================================================

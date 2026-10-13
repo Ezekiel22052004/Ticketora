@@ -84,9 +84,7 @@
         <div class="hidden md:flex items-center gap-7">
             <button onclick="showSection('client-events');document.getElementById('events-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Événements</button>
             <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">Cagnottes</button><button onclick="showMyTickets()" class="nav-link text-sm font-bold">Mes billets</button><button onclick="document.getElementById('faq').scrollIntoView({behavior:'smooth'})" class="nav-link text-sm font-bold">FAQ</button>
-            <button onclick="openParticipantLogin()" class="nav-link text-sm font-bold">Connexion</button>
             <a href="organisateur.html" class="nav-link text-sm font-bold">Organisateur</a>
-            <button onclick="openParticipantRegister()" class="bg-[#F97316] hover:bg-orange-600 text-white text-sm px-5 py-3 rounded-xl font-bold shadow-lg shadow-orange-900/20 transition">Créer un compte</button>
         </div>
 
         <button class="md:hidden text-white text-xl" onclick="togglePublicMenu()" aria-label="Menu">
@@ -97,9 +95,7 @@
     <div id="public-mobile-menu" class="hidden md:hidden fixed top-[80px] left-0 right-0 z-40 bg-[#06132f] border-t border-white/10 px-6 py-5 space-y-3 shadow-xl">
         <button onclick="showSection('client-events');document.getElementById('events-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Événements</button>
         <button onclick="document.getElementById('cagnottes-public').scrollIntoView({behavior:'smooth'});togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Cagnottes</button><button onclick="showMyTickets();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Mes billets</button>
-        <button onclick="openParticipantLogin();togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Connexion / Mes tickets</button>
         <a href="organisateur.html" onclick="togglePublicMenu()" class="block w-full text-left text-white font-bold py-2">Espace organisateur</a>
-        <button onclick="openParticipantRegister();togglePublicMenu()" class="w-full bg-[#F97316] text-white font-bold py-3 rounded-xl">Créer un compte</button>
         <button onclick="document.getElementById('pwa-install')?.click();togglePublicMenu()" class="w-full border border-orange-200 text-[#F97316] font-bold py-3 rounded-xl"><i class="fa-solid fa-download mr-2"></i>Installer Ticketora</button>
     </div>
 
@@ -254,31 +250,12 @@
         </div>
     </div>
 
-    <!-- MODALES COMPTE PARTICIPANT : interface prête sans toucher au paiement -->
-    <div id="participant-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-[80] items-center justify-center p-4">
-        <div class="bg-white w-full max-w-md rounded-3xl p-7 relative shadow-2xl">
-            <button onclick="closeParticipantModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-xl"></i></button>
-            <div class="w-12 h-12 rounded-xl bg-orange-50 text-[#F97316] flex items-center justify-center"><i class="fa-solid fa-user"></i></div>
-            <h3 id="participant-modal-title" class="text-2xl font-black text-[#071a3b] mt-4">Connexion</h3>
-            <p class="text-sm text-slate-500 mt-2">Accédez à vos billets, commandes, participations et historique.</p>
-            <div class="space-y-3 mt-5">
-              <input id="participant-name" class="hidden w-full border rounded-xl px-4 py-3" placeholder="Nom complet">
-              <input id="participant-email" type="email" class="w-full border rounded-xl px-4 py-3" placeholder="Email">
-              <input id="participant-password" type="password" class="w-full border rounded-xl px-4 py-3" placeholder="Mot de passe (8 caractères min.)">
-              <button id="participant-auth-btn" onclick="participantAuth(document.getElementById('participant-modal-title').innerText==='Créer un compte'?'register':'login')" class="w-full bg-[#F97316] hover:bg-orange-600 text-white font-bold py-3 rounded-xl">Continuer</button>
-              <button onclick="showParticipantHistory()" class="w-full bg-slate-100 text-slate-700 font-bold py-3 rounded-xl">Voir mon historique</button>
-            </div>
-            <div class="mt-5 pt-4 border-t text-[11px] text-center text-slate-400"><a href="politique-confidentialite.html" class="hover:text-[#F97316]">Confidentialité</a> · <a href="cgu.html" class="hover:text-[#F97316]">CGU</a> · <a href="conditions-vente.html" class="hover:text-[#F97316]">Vente & billetterie</a> · <a href="remboursement.html" class="hover:text-[#F97316]">Remboursement</a></div>
-        </div>
-    </div>
-
-
 <!-- ACCÈS AUX ESPACES -->
 <section id="acces" class="soft-section px-6 md:px-8 py-12">
  <div class="max-w-7xl mx-auto">
   <div class="text-center mb-7"><p class="text-[#F97316] text-xs font-black uppercase tracking-widest">Accès Ticketora</p><h2 class="text-2xl md:text-3xl font-black text-[#071a3b]">Choisissez votre espace</h2><p class="text-slate-500 mt-2 font-semibold">Les participants et organisateurs disposent d’un accès séparé et sécurisé.</p></div>
   <div class="grid md:grid-cols-3 gap-4">
-   <button onclick="openParticipantLogin()" class="access-card text-left"><span class="access-icon"><i class="fa-solid fa-user"></i></span><span><b>Participant</b><small>Mes billets, commandes et historique</small></span><i class="fa-solid fa-arrow-right ml-auto"></i></button>
+   <button onclick="showMyTickets()" class="access-card text-left"><span class="access-icon"><i class="fa-solid fa-user"></i></span><span><b>Participant</b><small>Retrouver mes billets</small></span><i class="fa-solid fa-arrow-right ml-auto"></i></button>
    <a href="organisateur.html" class="access-card"><span class="access-icon"><i class="fa-solid fa-user-tie"></i></span><span><b>Organisateur</b><small>Événements, ventes, rapports et retraits</small></span><i class="fa-solid fa-arrow-right ml-auto"></i></a>
   </div>
  </div>
@@ -293,7 +270,7 @@
   <details class="faq-item reveal"><summary>Comment récupérer mon billet ?</summary><p>Après confirmation du paiement, votre billet est généré avec un identifiant unique et un QR Code. Vous pouvez le télécharger et le conserver.</p></details>
   <details class="faq-item reveal"><summary>Les événements gratuits sont-ils disponibles ?</summary><p>Oui. Un événement gratuit ne demande aucun paiement. Une inscription permet de recevoir un billet gratuit lorsque l’organisateur l’a activé.</p></details>
   <details class="faq-item reveal"><summary>Comment fonctionne le QR Code à l’entrée ?</summary><p>Le QR Code est contrôlé par l’équipe de l’événement. Une validation est enregistrée côté serveur afin d’éviter qu’un billet soit accepté plusieurs fois.</p></details>
-  <details class="faq-item reveal"><summary>Comment retrouver mes billets plus tard ?</summary><p>Créez un compte participant puis utilisez « Connexion / Mes tickets » pour retrouver votre historique et vos billets associés à votre compte.</p></details>
+  <details class="faq-item reveal"><summary>Comment retrouver mes billets plus tard ?</summary><p>Ouvrez « Mes billets » et renseignez les informations utilisées lors de l’achat pour retrouver vos billets.</p></details>
   <details class="faq-item reveal"><summary>Comment acheter plusieurs billets ?</summary><p>Dans l’achat, choisissez la catégorie puis utilisez les boutons − et +. Chaque billet acheté est généré avec son propre identifiant et son propre QR Code.</p></details>
   <details class="faq-item reveal"><summary>Les frais Tchin sont-ils ajoutés au prix du billet ?</summary><p>Oui. Les frais Tchin sont affichés séparément et ajoutés au total payé par le client. Le prix de base du billet reste celui défini par l’organisateur.</p></details>
   <details class="faq-item reveal"><summary>Comment devenir organisateur ?</summary><p>Ouvrez l’espace Organisateur, remplissez la demande d’accès puis attendez la validation de l’administrateur. La connexion est disponible une fois le compte validé.</p></details>
@@ -324,8 +301,6 @@
         <button onclick="publicBottomNav('home')"><i class="fa-solid fa-house"></i><span>Accueil</span></button>
         <button onclick="publicBottomNav('events')"><i class="fa-solid fa-calendar-days"></i><span>Événements</span></button>
         <button onclick="publicBottomNav('cagnottes')"><i class="fa-solid fa-hand-holding-heart"></i><span>Cagnottes</span></button>
-        <button onclick="publicBottomNav('notifications')"><i class="fa-solid fa-bell"></i><span>Notifications</span></button>
-        <button onclick="publicBottomNav('profile')"><i class="fa-solid fa-user"></i><span>Profil</span></button>
         <button onclick="publicBottomNav('live')"><i class="fa-solid fa-tower-broadcast"></i><span>Live</span></button>
     </nav>
 
@@ -353,8 +328,7 @@
     <script>
         function togglePublicMenu(){document.getElementById('public-mobile-menu')?.classList.toggle('hidden')}
         function searchFromHero(){const q=(document.getElementById('hero-search-event')?.value||'').trim();showSection('client-events');const s=document.getElementById('search-event');if(s)s.value=q;filterEvents();document.getElementById('events-public')?.scrollIntoView({behavior:'smooth'});}
-        function closeParticipantModal(){const m=document.getElementById('participant-modal');m.classList.add('hidden');m.classList.remove('flex')}
-        window.togglePublicMenu=togglePublicMenu;window.searchFromHero=searchFromHero;window.closeParticipantModal=closeParticipantModal;
+        window.togglePublicMenu=togglePublicMenu;window.searchFromHero=searchFromHero;
     </script>
 <script>
 const heroWords=['votre événement','votre concert','votre expérience'];
@@ -379,8 +353,6 @@ function startHeroTypewriter(){
   const el=document.getElementById('hero-rotating-text');if(!el)return;
   el.textContent='';heroCharIndex=0;heroDeleting=false;heroWordIndex=0;runHeroTypewriter();
 }
-function openParticipantRegister(){const m=document.getElementById('participant-modal');document.getElementById('participant-modal-title').innerText='Créer un compte';document.getElementById('participant-name').classList.remove('hidden');m.classList.remove('hidden');m.classList.add('flex')}
-function openParticipantLogin(){const m=document.getElementById('participant-modal');document.getElementById('participant-modal-title').innerText='Connexion';document.getElementById('participant-name').classList.add('hidden');m.classList.remove('hidden');m.classList.add('flex')}
 window.addEventListener('DOMContentLoaded',startHeroTypewriter);
 </script>
 

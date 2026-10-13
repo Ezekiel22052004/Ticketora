@@ -4,6 +4,8 @@ Cette version utilise les fichiers fournis et conserve le HTML/CSS existant. Auc
 
 ## Changements ciblés
 
+- Retrait de l’interface publique participant « Connexion », « Créer un compte », « Profil » et « Notifications ». Les accès administrateur et organisateur ne sont pas supprimés. « Mes billets » reste disponible via la recherche par les informations utilisées lors de l’achat.
+
 - Retrait des liens publics « Administration » dans la page d'accueil et dans « Choisissez votre espace » ; l'interface `admin.html` et les protections serveur sont conservées.
 - Conservation de « Glisser pour payer » ; ajout d'une garde contre un double déclenchement de l'action de glissement.
 - Ajout d'un suivi visuel à cinq étapes dans les retours de paiement des tickets, LIVE et cagnottes. Les étapes finales ne sont affichées comme terminées qu'après confirmation retournée par l'API.
