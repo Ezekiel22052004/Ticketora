@@ -395,7 +395,7 @@ ALTER TABLE cagnottes ADD COLUMN IF NOT EXISTS public_slug VARCHAR(180);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_events_public_slug ON events(public_slug) WHERE public_slug IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cagnottes_public_slug ON cagnottes(public_slug) WHERE public_slug IS NOT NULL;
 
--- Ticketora corrections: reservations temporaires et notifications persistantes.
+-- Ticketora corrections : réservations temporaires.
 CREATE TABLE IF NOT EXISTS ticket_reservations (
   id BIGSERIAL PRIMARY KEY,
   order_id BIGINT NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
@@ -408,16 +408,5 @@ CREATE TABLE IF NOT EXISTS ticket_reservations (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_ticket_reservations_stock ON ticket_reservations(event_id,ticket_type,status,expires_at);
-CREATE TABLE IF NOT EXISTS participant_notifications (
-  id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES participant_users(id) ON DELETE CASCADE,
-  title VARCHAR(180) NOT NULL,
-  message TEXT NOT NULL,
-  kind VARCHAR(40) NOT NULL DEFAULT 'INFO',
-  entity_id VARCHAR(100),
-  read_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_participant_notifications_user ON participant_notifications(user_id,created_at DESC);
 ALTER TABLE live_payments ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES participant_users(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_live_payments_user_live ON live_payments(user_id,live_id,status);

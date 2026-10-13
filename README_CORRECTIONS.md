@@ -4,17 +4,14 @@ Cette version utilise les fichiers fournis et conserve le HTML/CSS existant. Auc
 
 ## Changements ciblés
 
-- Retrait de l’interface publique participant « Connexion », « Créer un compte », « Profil » et « Notifications ». Les accès administrateur et organisateur ne sont pas supprimés. « Mes billets » reste disponible via la recherche par les informations utilisées lors de l’achat.
-
 - Retrait des liens publics « Administration » dans la page d'accueil et dans « Choisissez votre espace » ; l'interface `admin.html` et les protections serveur sont conservées.
 - Conservation de « Glisser pour payer » ; ajout d'une garde contre un double déclenchement de l'action de glissement.
 - Ajout d'un suivi visuel à cinq étapes dans les retours de paiement des tickets, LIVE et cagnottes. Les étapes finales ne sont affichées comme terminées qu'après confirmation retournée par l'API.
 - Réservation temporaire des stocks de billets pour dix minutes, avec comptage transactionnel des réservations actives pendant la création d'une commande.
 - Libération des réservations lorsqu'un statut réel Tchin indique un paiement échoué/annulé/expiré. Les réservations expirées ne sont plus comptées dans le stock disponible ; une confirmation tardive est revérifiée avant toute attribution pour éviter une double vente.
 - Enregistrement de l'utilisateur connecté sur les commandes et paiements LIVE, et vérification de l'accès LIVE durable en base pour le compte associé au paiement.
-- Ajout d'API de modification du profil et de lecture/gestion des notifications participant.
-- Amélioration de « Mes tickets » après connexion : informations de l'événement, statut, QR code, téléchargement PDF, profil et notifications.
-- Ajout de notifications persistantes pour la confirmation d'un ticket, d'un accès LIVE et d'une contribution de cagnotte lorsque la confirmation serveur est traitée.
+- « Mes billets » reste accessible sans compte via la vérification des informations d’achat, avec téléchargement des billets.
+- Les confirmations de paiement restent gérées côté serveur ; aucun centre de notifications participant n’est proposé.
 - Correction du montant minimum affiché pour les cagnottes : 200 FCFA, aligné sur l'API existante.
 - Les inscriptions gratuites n'affichent plus le libellé « Paiement confirmé ».
 
@@ -50,4 +47,4 @@ npm install
 npm start
 ```
 
-Le serveur charge `.env` depuis le même dossier que `server.js`. Les migrations idempotentes des tables de réservations, notifications et accès LIVE sont également lancées au démarrage.
+Le serveur charge `.env` depuis le même dossier que `server.js`. Les migrations idempotentes des tables de réservations et d’accès LIVE sont également lancées au démarrage. La table historique participant_users et ses colonnes de liaison sont conservées pour compatibilité de la base, mais aucun parcours public de compte participant n’est exposé.
