@@ -21,6 +21,7 @@ if(!process.env.DATABASE_URL) console.warn('DATABASE_URL manquante.');
 if(!process.env.SESSION_SECRET) console.warn('SESSION_SECRET manquante.');
 
 const allowedOrigins=new Set([FRONTEND_URL,'https://ticketora.site','https://www.ticketora.site','https://ticketora.netlify.app','http://localhost:3000','http://127.0.0.1:3000','http://localhost:5500','http://127.0.0.1:5500']);
+function isAllowedOrigin(origin){if(!origin||allowedOrigins.has(origin))return true;try{const u=new URL(origin);return u.protocol==='https:'&&/^[a-z0-9-]+\.ticketora\.site$/i.test(u.hostname)&&u.hostname!=='www.ticketora.site';}catch{return false;}}
 app.set('trust proxy',1);
 app.use(helmet({
   crossOriginResourcePolicy:{policy:'cross-origin'},
@@ -40,7 +41,7 @@ app.use(helmet({
     }
   }
 }));
-app.use(cors({origin:(origin,cb)=>{if(!origin||allowedOrigins.has(origin)) return cb(null,true); return cb(new Error('Origin non autorisée'));},credentials:true}));
+app.use(cors({origin:(origin,cb)=>{if(isAllowedOrigin(origin)) return cb(null,true); return cb(new Error('Origin non autorisée'));},credentials:true}));
 app.use(rateLimit({windowMs:60*1000,max:180,standardHeaders:true,legacyHeaders:false}));
 const authRateLimit=rateLimit({windowMs:15*60*1000,max:12,standardHeaders:true,legacyHeaders:false,message:{success:false,message:'Trop de tentatives. Réessayez plus tard.'}});
 
@@ -60,7 +61,7 @@ app.use((req,res,next)=>{
   if(!['POST','PUT','PATCH','DELETE'].includes(req.method)) return next();
   if(req.path==='/api/webhooks/tchin') return next();
   const origin=req.get('origin');
-  if(origin && !allowedOrigins.has(origin)) return res.status(403).json({success:false,message:'Origin non autorisée.'});
+  if(origin && !isAllowedOrigin(origin)) return res.status(403).json({success:false,message:'Origin non autorisée.'});
   next();
 });
 
