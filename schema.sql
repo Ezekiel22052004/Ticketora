@@ -410,3 +410,50 @@ CREATE TABLE IF NOT EXISTS ticket_reservations (
 CREATE INDEX IF NOT EXISTS idx_ticket_reservations_stock ON ticket_reservations(event_id,ticket_type,status,expires_at);
 ALTER TABLE live_payments ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES participant_users(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_live_payments_user_live ON live_payments(user_id,live_id,status);
+
+
+-- Suivi sécurisé des annulations, remboursements et demandes individuelles
+CREATE TABLE IF NOT EXISTS event_cancellations (
+  id BIGSERIAL PRIMARY KEY, event_id BIGINT NOT NULL UNIQUE REFERENCES events(id) ON DELETE RESTRICT,
+  organizer_id BIGINT REFERENCES organizers(id) ON DELETE SET NULL, status VARCHAR(24) NOT NULL DEFAULT 'DEMANDEE' CHECK(status IN ('DEMANDEE','AUTORISEE','ANNULEE','BLOQUEE')),
+  reason TEXT NOT NULL DEFAULT '', late_authorized_until TIMESTAMPTZ, required_amount INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), confirmed_at TIMESTAMPTZ
+);
+CREATE TABLE IF NOT EXISTS ticket_refunds (
+  id BIGSERIAL PRIMARY KEY, order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE RESTRICT,
+  ticket_id BIGINT REFERENCES tickets(id) ON DELETE RESTRICT, event_id BIGINT NOT NULL REFERENCES events(id) ON DELETE RESTRICT,
+  recipient_phone VARCHAR(60) NOT NULL, recipient_email VARCHAR(255) NOT NULL, amount INTEGER NOT NULL CHECK(amount >= 0), payment_operator VARCHAR(80),
+  status VARCHAR(24) NOT NULL DEFAULT 'EN_ATTENTE' CHECK(status IN ('EN_ATTENTE','EN_COURS','PAYE','ECHEC','BLOQUE')),
+  provider_reference VARCHAR(255) UNIQUE, provider_token VARCHAR(255) UNIQUE, provider_status VARCHAR(50), error_message TEXT,
+  refund_kind VARCHAR(30) NOT NULL DEFAULT 'EVENT_CANCEL', retained_amount INTEGER NOT NULL DEFAULT 0,
+  provider_fee INTEGER NOT NULL DEFAULT 0, admin_amount INTEGER NOT NULL DEFAULT 0, organizer_id BIGINT REFERENCES organizers(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), paid_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_refunds_event_order ON ticket_refunds(order_id) WHERE refund_kind='EVENT_CANCEL';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_refunds_voluntary_ticket ON ticket_refunds(ticket_id) WHERE refund_kind='VOLUNTARY' AND ticket_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ticket_refunds_event_status ON ticket_refunds(event_id,status);
+CREATE TABLE IF NOT EXISTS organizer_wallet_deposits (
+  id BIGSERIAL PRIMARY KEY, organizer_id BIGINT NOT NULL REFERENCES organizers(id) ON DELETE RESTRICT,
+  reference VARCHAR(100) NOT NULL UNIQUE, amount INTEGER NOT NULL CHECK(amount>0), tchin_token VARCHAR(255) UNIQUE,
+  tchin_status VARCHAR(30) NOT NULL DEFAULT 'pending', tchin_reference VARCHAR(255),
+  status VARCHAR(20) NOT NULL DEFAULT 'EN_ATTENTE' CHECK(status IN ('EN_ATTENTE','PAYE','ECHEC')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), paid_at TIMESTAMPTZ
+);
+CREATE TABLE IF NOT EXISTS organizer_wallet_ledger (
+  id BIGSERIAL PRIMARY KEY, organizer_id BIGINT NOT NULL REFERENCES organizers(id) ON DELETE RESTRICT,
+  deposit_id BIGINT UNIQUE REFERENCES organizer_wallet_deposits(id) ON DELETE RESTRICT,
+  refund_id BIGINT UNIQUE REFERENCES ticket_refunds(id) ON DELETE RESTRICT, entry_type VARCHAR(30) NOT NULL,
+  amount INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS admin_refund_revenue (
+  id BIGSERIAL PRIMARY KEY, refund_id BIGINT NOT NULL UNIQUE REFERENCES ticket_refunds(id) ON DELETE RESTRICT,
+  retained_amount INTEGER NOT NULL DEFAULT 0, provider_fee INTEGER NOT NULL DEFAULT 0,
+  admin_amount INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS ticket_cancellation_requests (
+  id BIGSERIAL PRIMARY KEY, ticket_id BIGINT NOT NULL UNIQUE REFERENCES tickets(id) ON DELETE RESTRICT, order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE RESTRICT, event_id BIGINT NOT NULL REFERENCES events(id) ON DELETE RESTRICT,
+  customer_phone VARCHAR(60) NOT NULL, customer_email VARCHAR(255) NOT NULL, status VARCHAR(24) NOT NULL DEFAULT 'DEMANDEE' CHECK(status IN ('DEMANDEE','ACCEPTEE','REFUSEE','ANNULEE')), reason TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_ticket_cancel_requests_event ON ticket_cancellation_requests(event_id,status);
+
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_operator VARCHAR(80);
