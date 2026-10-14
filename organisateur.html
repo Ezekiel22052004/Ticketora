@@ -19,7 +19,14 @@ body,.font-sans{font-family:Georgia,"Times New Roman",serif !important}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <style>#event-map{height:300px;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0}.leaflet-container{font:inherit}</style>
 <style>
-@media(max-width:900px){body{display:block!important;overflow:auto!important}.org-mobile-fix{}#org-dashboard-screen{display:block!important}.org-dashboard-screen{display:block!important}#org-dashboard-screen>aside{width:100%!important;height:auto!important;position:relative!important;padding:16px!important}#org-dashboard-screen>aside nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#org-dashboard-screen>aside nav button{padding:10px!important;font-size:11px!important}#org-dashboard-screen>main{padding:16px!important;width:100%!important}.grid{min-width:0}.overflow-x-auto{max-width:100%}}
+/* Correctif : le menu organisateur reste dans la hauteur de l'écran et défile indépendamment. */
+#org-dashboard-screen > aside { height: 100vh; max-height: 100vh; overflow: hidden; min-height: 0; }
+#org-dashboard-screen > aside > div:first-child { min-height: 0; flex: 1 1 auto; overflow: hidden; display: flex; flex-direction: column; }
+#org-dashboard-screen > aside > div:first-child nav { min-height: 0; flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #475569 #0f172a; padding-right: 4px; }
+#org-dashboard-screen > aside > div:first-child nav::-webkit-scrollbar { width: 6px; }
+#org-dashboard-screen > aside > div:first-child nav::-webkit-scrollbar-track { background: #0f172a; border-radius: 8px; }
+#org-dashboard-screen > aside > div:first-child nav::-webkit-scrollbar-thumb { background: #475569; border-radius: 8px; }
+@media(max-width:900px){body{display:block!important;overflow:auto!important}.org-mobile-fix{}#org-dashboard-screen{display:block!important}.org-dashboard-screen{display:block!important}#org-dashboard-screen>aside{width:100%!important;height:auto!important;max-height:none!important;overflow:visible!important;position:relative!important;padding:16px!important}#org-dashboard-screen>aside>div:first-child{overflow:visible!important}#org-dashboard-screen>aside>div:first-child nav{overflow:visible!important;max-height:none!important}#org-dashboard-screen>aside nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#org-dashboard-screen>aside nav button{padding:10px!important;font-size:11px!important}#org-dashboard-screen>main{padding:16px!important;width:100%!important}.grid{min-width:0}.overflow-x-auto{max-width:100%}}
 </style>
 </head>
 <body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex">
